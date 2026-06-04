@@ -670,21 +670,14 @@ void STDCALLBULL FC_FUNC(matc_c,MATC) (char *cmd,int *cmdlen,char *result,*resle
 {
 #define MAXLEN 8192
 
-  static int been_here = 0;
-  char *ptr, c, cc[32], *ccmd;
+  char *ptr, *ccmd;
   int slen, start;
-#pragma omp threadprivate(been_here)
 
   /* MB: Critical section removed since Matc library
    * modified to be thread safe */
 
    slen = *len;
-   if ( been_here==0 ) {
-     mtc_init( NULL, stdout, stderr );
-     strcpy( cc, "format( 12,\"rowform\")" );
-     mtc_domath( cc );
-     been_here = 1;
-   }
+   mtc_init_once();
 
   ccmd = (char *)malloc(slen+1);
   strncpy( ccmd, cmd, slen);

@@ -528,6 +528,7 @@ VARIABLE *var_temp_new(int type, int nrow, int ncol)
         mat->refcount = 1;
         mat->nrow     = mat->ncol = 1;
         mat->data     = (double *)((char *)mat + MATRIXSIZE);
+        *mat->data    = 0.0;
         ptr->this     = mat;
         return ptr;
     }

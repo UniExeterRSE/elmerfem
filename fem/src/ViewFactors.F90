@@ -103,7 +103,6 @@
      ! MPI row-decomposition for view factor computation
      INTEGER :: nLocal, n_global, iStart_local, myRank, nProcs, vf_comm, mpiErr
      REAL(KIND=dp), ALLOCATABLE :: Factors_local(:)
-     LOGICAL :: vf_mpi_done
 
      ! Radiators on/off, coordinates
      !------------------------------
@@ -171,8 +170,6 @@
      ! MPI initialisation — must come before any Elmer or MPI calls.
      ! Sets ParEnv%MyPE, ParEnv%PEs and ELMER_COMM_WORLD.
      CALL InitMPI()
-     vf_mpi_done = .FALSE.
-
      CALL Info( Caller, ' ', Level=3 )
      CALL Info( Caller, '==================================================', Level=3 )
      CALL Info( Caller, ' E L M E R  V I E W F A C T O R S,  W E L C O M E',  Level=3  )
@@ -522,15 +519,10 @@
                Factors = Factors_local
              END IF
              DEALLOCATE( Factors_local )
-
-             ! Finalise MPI now — before Newton/IterSolv which may issue
-             ! collective operations and would hang if called on rank 0 only.
-             ! Non-root ranks have no further work; rank 0 continues serially.
-             IF ( nProcs > 1 .AND. .NOT. vf_mpi_done ) THEN
-               CALL ParallelFinalize()
-               vf_mpi_done = .TRUE.
-               IF ( myRank /= 0 ) STOP
-             END IF
+             ! IterSolv uses ipar=0/dProc=0 → sequential BLAS dot products,
+             ! no MPI.  Non-root ranks skip the IF(myRank==0) normalisation
+             ! block below and loop back; the next body's MPI_Gatherv acts as
+             ! the natural synchronisation point, so no explicit barrier needed.
            END IF
 
            IF (RT_n>0) THEN
@@ -580,9 +572,7 @@
      CALL Info( Caller,Message, Level=3 )
 
      CALL FLUSH(6)
-     ! In MPI mode ParallelFinalize was called after the Gatherv; only call
-     ! here for serial runs (nProcs==1) where it wasn't called earlier.
-     IF ( .NOT. vf_mpi_done ) CALL ParallelFinalize()
+     CALL ParallelFinalize()
 
 CONTAINS
 

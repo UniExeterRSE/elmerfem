@@ -940,11 +940,9 @@ char *mtc_eval(void *handle)
     MTC_COMPILED *compiled = (MTC_COMPILED *)handle;
     VARIABLE *headsave;
     jmp_buf jmp, *savejmp;
-    void (*sigfunc)() = (void (*)())signal(SIGINT, sig_trap);
 
     if (!compiled) return NULL;
 
-    setlocale(LC_ALL, "C");
     savejmp = jmpbuf;
     jmpbuf = &jmp;
 
@@ -973,7 +971,6 @@ char *mtc_eval(void *handle)
     }
 
     jmpbuf = savejmp;
-    signal(SIGINT, sigfunc);
     return math_out_str;
 }
 

@@ -278,7 +278,16 @@
      RadiationBC = .FALSE.
 !------------------------------------------------------------------------------
 
-     DO RadiationBody = 1, MaxRadiationBody      
+     DO RadiationBody = 1, MaxRadiationBody
+
+       ! Initialise MPI context unconditionally so WriteOutputFile guard
+       ! (IF myRank==0) is always valid regardless of geometry path.
+       myRank  = ParEnv % MyPE
+       nProcs  = ParEnv % PEs
+       vf_comm = ParEnv % ActiveComm
+       iStart_local = 0
+       n_global     = 0
+
        IF( MaxRadiationBody > 1) THEN
          CALL Info(Caller,'Computing view factors for radiation body' // I2S(RadiationBody), Level=3)
        END IF
@@ -368,8 +377,12 @@
        ElimBB = .NOT. GetLogical( Params,'Viewfactor BBox Shadow', GotIt)
        
        IF ( CylindricSymmetry ) THEN
-         ! axicymmetric case (radiators not implemeted)
-         ! --------------------------------------------
+         ! Axisymmetric case (radiators not implemented).
+         ! MPI row decomposition is not yet implemented for this path;
+         ! the computation runs on every rank but only rank 0 writes output.
+         IF ( nProcs > 1 ) CALL Warn(Caller, &
+             'MPI: axisymmetric view factors computed redundantly on all ranks')
+         n_global = n
          divide = GetInteger( Params, 'Viewfactor divide',GotIt)
          IF ( .NOT. GotIt ) Divide = 1
          CALL ViewFactorsAxis( N, Surf, Coord, Factors, divide, CombineInt )
@@ -392,10 +405,7 @@
          ! Each rank has its local slice; all ranks need global geometry to compute F_ij
          ! for any j, and for the shadow BVH.
          ! ---------------------------------------------------------------------------------
-         nLocal       = n
-         myRank       = ParEnv % MyPE
-         nProcs       = ParEnv % PEs
-         vf_comm      = ParEnv % ActiveComm
+         nLocal = n
 
          IF ( nProcs > 1 ) THEN
            CALL Info(Caller,'MPI mode: gathering radiation geometry across '//I2S(nProcs)//' ranks',Level=5)
@@ -588,18 +598,9 @@ CONTAINS
      DO i = 1, nProcs-1
        iStarts_out(i) = iStarts_out(i-1) + nLocals_out(i-1)
      END DO
-     iStart_local = iStarts_out( nLocals_out(0) )   ! placeholder; recomputed below
-     ! Recompute correctly via scan
-     iStart_local = 0
-     DO i = 0, nProcs-1
-       IF ( nLocals_out(i) == nLocal .AND. i > 0 ) THEN
-         iStart_local = iStarts_out(i)
-         EXIT
-       END IF
-     END DO
-     ! Use MPI_Scan for correct rank-relative offset
+     ! Exclusive prefix sum gives this rank's first global row index (0-based)
      CALL MPI_Scan( nLocal, iStart_local, 1, MPI_INTEGER, MPI_SUM, comm, ierr )
-     iStart_local = iStart_local - nLocal   ! exclusive prefix sum
+     iStart_local = iStart_local - nLocal
 
      ! Displacement arrays for Allgatherv
      ALLOCATE( rc1(0:nProcs-1), d1(0:nProcs-1) )

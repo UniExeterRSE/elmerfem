@@ -422,8 +422,8 @@
 
          ! In order to speed up shadowing checks, if requested, reduce the mesh complexity by finding
          ! simply connected planar areas, and replace the mesh within by few quads or triangles. Also
-         ! potentially finds circular planar areas (disabled atm). This scheme fails if the areas are
-         ! not convex or contain holes. Alternatively a surface or volume mesh may be given from disk.
+         ! potentially finds circular planar areas (disabled atm). Alternatively a surface or volume
+         ! mesh may be given from disk.
          !-------------------------------------------------------------------------------------------
          BLOCK
            !------------------------------------------------------
@@ -457,7 +457,6 @@
            ! Shadow mesh is fully available on all ranks:
            !  - LoadShadowMesh: reads mesh files directly (serial, no MPI)
            !  - LoadMesh2: called with (1,0) above so all ranks load the full mesh
-           !  - PlanarReduce: not used in MPI mode (Combine3D warning above)
            ! No gather needed.
 
            IF ( RT_n > 0 ) THEN

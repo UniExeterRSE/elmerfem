@@ -917,6 +917,7 @@ void *mtc_compile(char *str)
 {
     MTC_COMPILED *compiled;
     LIST *saved;
+    jmp_buf jmp, *savejmp;
 
     if (!str || !*str) return NULL;
 
@@ -926,10 +927,26 @@ void *mtc_compile(char *str)
     saved = (LIST *)ALLOC_HEAD;
     ALLOC_HEAD = (LIST *)NULL;
 
-    compiled = (MTC_COMPILED *)malloc(sizeof(MTC_COMPILED));
-    compiled->root = doit_compile(str);
-    compiled->alloc_head = (LIST *)ALLOC_HEAD;
+    savejmp = jmpbuf;
+    jmpbuf = &jmp;
 
+    compiled = (MTC_COMPILED *)malloc(sizeof(MTC_COMPILED));
+
+    switch (setjmp(jmp))
+    {
+        case 0:
+            compiled->root       = doit_compile(str);
+            compiled->alloc_head = (LIST *)ALLOC_HEAD;
+        break;
+
+        default:
+            /* error_matc already freed ALLOC_HEAD and wrote to math_out_str */
+            free(compiled);
+            compiled = NULL;
+        break;
+    }
+
+    jmpbuf     = savejmp;
     ALLOC_HEAD = saved;
 
     return (void *)compiled;

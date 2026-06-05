@@ -746,10 +746,17 @@ void STDCALLBULL FC_FUNC(matc_c_cached,MATC_C_CACHED) (char *cmd,int *cmdlen,cha
   handle = mtc_cache_lookup(&ccmd[start]);
   if (!handle) {
     handle = mtc_compile(&ccmd[start]);
-    mtc_cache_insert(&ccmd[start], handle);
+    if (handle)
+      mtc_cache_insert(&ccmd[start], handle);
   }
 
-  ptr = (char *)mtc_eval(handle);
+  /* Failed compile: fall back to mtc_domath so the MATC ERROR message
+   * reaches Elmer's output — same behaviour as the non-cached path. */
+  if (!handle) {
+    ptr = mtc_domath(&ccmd[start]);
+  } else {
+    ptr = (char *)mtc_eval(handle);
+  }
   if (ptr) {
     slen = strlen(ptr) - 1; /* ignore linefeed */
   } else {

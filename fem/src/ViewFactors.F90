@@ -497,24 +497,34 @@
                       Nrays, LineInteg, TriInteg, QuadInteg, CombineInt, &
                       iStart_local, nLocal, myRank )
 
-             ! Gather local rows from all ranks → full n_global × n_global matrix
-             ALLOCATE( Factors(n_global * n_global), STAT=istat )
-             IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
-
+             ! Gather local rows to rank 0 only — only rank 0 needs the full
+             ! matrix for normalisation and output.  Non-root ranks send their
+             ! rows but receive nothing, saving O(N²) memory and Newton work.
              IF ( nProcs > 1 ) THEN
                BLOCK
                  INTEGER, ALLOCATABLE :: recvcounts(:), displs(:)
+                 REAL(KIND=dp), ALLOCATABLE :: dummy_recv(:)
                  ALLOCATE( recvcounts(0:nProcs-1), displs(0:nProcs-1) )
                  recvcounts = nLocals_vf * n_global
                  displs(0)  = 0
                  DO i = 1, nProcs-1
                    displs(i) = displs(i-1) + recvcounts(i-1)
                  END DO
-                 CALL MPI_Allgatherv( Factors_local, nLocal*n_global, MPI_DOUBLE_PRECISION, &
-                     Factors, recvcounts, displs, MPI_DOUBLE_PRECISION, vf_comm, mpiErr )
+                 IF ( myRank == 0 ) THEN
+                   ALLOCATE( Factors(n_global * n_global), STAT=istat )
+                   IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
+                   CALL MPI_Gatherv( Factors_local, nLocal*n_global, MPI_DOUBLE_PRECISION, &
+                       Factors, recvcounts, displs, MPI_DOUBLE_PRECISION, 0, vf_comm, mpiErr )
+                 ELSE
+                   ALLOCATE( dummy_recv(1) )  ! receive buffer ignored on non-root
+                   CALL MPI_Gatherv( Factors_local, nLocal*n_global, MPI_DOUBLE_PRECISION, &
+                       dummy_recv, recvcounts, displs, MPI_DOUBLE_PRECISION, 0, vf_comm, mpiErr )
+                 END IF
                  DEALLOCATE( recvcounts, displs )
                END BLOCK
              ELSE
+               ALLOCATE( Factors(n_global * n_global), STAT=istat )
+               IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
                Factors = Factors_local
              END IF
              DEALLOCATE( Factors_local )
@@ -533,27 +543,31 @@
        CALL Info( Caller,Message, Level=3 )
        at2 = CPUTime(); rt2 = RealTime()
 
-       CALL SymmetryReduction(DoRadiators,NofRadiators,n,Ni,Factors)
+       ! Only rank 0 has the full Factors matrix — normalisation and output
+       ! are rank-0-only operations.  Other ranks already did their work.
+       IF ( myRank == 0 ) THEN
+         CALL SymmetryReduction(DoRadiators,NofRadiators,n,Ni,Factors)
 
-       CALL FindInitialMinMax(Ni,N,Factors,RadiationOpen)
-       CALL NormalizeFactors(Model,DoRadiators,NofRadiators,n,Factors,RadiationOpen)
-       CALL FindNormalizedMinMax(Ni,n,Factors)
+         CALL FindInitialMinMax(Ni,N,Factors,RadiationOpen)
+         CALL NormalizeFactors(Model,DoRadiators,NofRadiators,n,Factors,RadiationOpen)
+         CALL FindNormalizedMinMax(Ni,n,Factors)
 
-       WRITE (Message,'(A,2F8.2)') 'View factors manipulated in time (s):',&
-           CPUTime()-at2, realtime()-rt2
-       CALL Info( Caller,Message, Level=3 )
-       at2 = CPUTime(); rt2 = RealTime()
-              
-       IF(InfoActive(12)) CALL ViewFactorsLumping()
-       ! Only rank 0 writes — all ranks have identical Factors after the gather
-       IF ( myRank == 0 ) CALL WriteOutputFile(DoRadiators,Ni,n,Factors,RadiationBody)
+         WRITE (Message,'(A,2F8.2)') 'View factors manipulated in time (s):',&
+             CPUTime()-at2, realtime()-rt2
+         CALL Info( Caller,Message, Level=3 )
+         at2 = CPUTime(); rt2 = RealTime()
 
-       WRITE (Message,'(A,2F8.2)') 'View factors saved in time (s):',&
-           CPUTime()-at2, realtime()-rt2
-       CALL Info( Caller,Message, Level=3 )
-       at2 = CPUTime(); rt2 = RealTime()
+         IF(InfoActive(12)) CALL ViewFactorsLumping()
+         CALL WriteOutputFile(DoRadiators,Ni,n,Factors,RadiationBody)
 
-       DEALLOCATE( Surf, Factors, Areas )
+         WRITE (Message,'(A,2F8.2)') 'View factors saved in time (s):',&
+             CPUTime()-at2, realtime()-rt2
+         CALL Info( Caller,Message, Level=3 )
+         at2 = CPUTime(); rt2 = RealTime()
+       END IF
+
+       DEALLOCATE( Surf, Areas )
+       IF ( ALLOCATED(Factors) ) DEALLOCATE( Factors )
        IF ( .NOT. CylindricSymmetry ) DEALLOCATE(Normals, Type)
        IF ( ALLOCATED(nLocals_vf) ) DEALLOCATE( nLocals_vf, iStarts_vf )
        

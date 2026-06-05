@@ -467,11 +467,11 @@
            ! -----------------------------------
            CALL ExtractMeshInfo( RT_Mesh, RT_n, RT_Coord, RT_Surf, RT_Type, RT_Data, RT_Perm, ElimBBox = ElimBB )
 
-           ! MPI: gather shadow mesh to all ranks (all need full mesh for ray testing)
-           IF ( nProcs > 1 .AND. RT_n > 0 ) THEN
-             CALL Info(Caller,'MPI mode: gathering shadow mesh across ranks',Level=5)
-             CALL GatherRTMesh( vf_comm, nProcs, RT_n, RT_Coord, RT_Surf, RT_Type, RT_Data, RT_Perm )
-           END IF
+           ! Shadow mesh is fully available on all ranks:
+           !  - LoadShadowMesh: reads mesh files directly (serial, no MPI)
+           !  - LoadMesh2: called with (1,0) above so all ranks load the full mesh
+           !  - PlanarReduce: not used in MPI mode (Combine3D warning above)
+           ! No gather needed.
 
            IF ( RT_n > 0 ) THEN
              CALL Info(Caller,'Using separate mesh for shadowing, #elements = '//I2S(RT_n),Level=5)
@@ -1370,7 +1370,9 @@ CONTAINS
              GetLogical( Model % Simulation,'Internal Rigid Mesh Mapping', Found )
 
          BoundaryOnly = .NOT. DoMapping          
-         RT_Mesh => LoadMesh2( Model, "./", ShadowMeshName, BoundaryOnly, ParEnv % PEs, ParEnv % MyPE )
+         ! Load as non-distributed (1,0) so every MPI rank gets the complete
+         ! shadow mesh independently — all ranks need it for ray testing.
+         RT_Mesh => LoadMesh2( Model, "./", ShadowMeshName, BoundaryOnly, 1, 0 )
 
          CALL SymmetryDuplication(RT_Mesh)
          

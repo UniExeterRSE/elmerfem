@@ -231,7 +231,13 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
       {
          int li = i - iStart;   /* local (rank-relative) row index */
 
-         for( j=0; j<N; j++ ) Factors[li*N+j] = 0.0;
+         /* Zero only entries not pre-filled by within-block symmetry.
+          * Entries j in [iStart, i) are written when row j is processed
+          * (upper-triangle pass, symmetric fill) — do not zero them here.
+          *   j < iStart  : before our block, computed in lower-triangle loop
+          *   j >= i      : standard upper triangle, not yet computed        */
+         for( j=0;      j<iStart; j++ ) Factors[li*N+j] = 0.0;
+         for( j=i;      j<N;      j++ ) Factors[li*N+j] = 0.0;
          if ( lel[i].Area<1.0e-10 ) continue;
 
          /* upper triangle: j > i — store own entry, also fill symmetric

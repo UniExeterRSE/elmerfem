@@ -100,6 +100,11 @@
      REAL(KIND=dp) :: at, rt, at2, rt2
      INTEGER :: i,j,k,l,t,n,Ni,istat
 
+     ! MPI row-decomposition for view factor computation
+     INTEGER :: nLocal, n_global, iStart_local, myRank, nProcs, vf_comm, mpiErr
+     INTEGER, ALLOCATABLE :: nLocals_vf(:), iStarts_vf(:)
+     REAL(KIND=dp), ALLOCATABLE :: Factors_local(:)
+
      ! Radiators on/off, coordinates
      !------------------------------
      INTEGER :: NofRadiators
@@ -305,7 +310,8 @@
        IF ( CylindricSymmetry ) THEN
          ALLOCATE( Surf(2*n), Factors(n*n), STAT=istat )
        ELSE
-         ALLOCATE( Normals(3*n), Factors(n*n), Surf(4*n), Type(n), STAT=istat )
+         ! Factors allocated later, after MPI geometry gather determines n_global
+         ALLOCATE( Normals(3*n), Surf(4*n), Type(n), STAT=istat )
        END IF
        IF ( istat /= 0 ) THEN
          CALL Fatal( Caller, 'Memory allocation error. Aborting' )
@@ -382,6 +388,34 @@
          ! -----------------------------------------------------------------------------
          CALL ExtractMeshInfo( Mesh, n, Coord, Surf, Type )
 
+         ! --- MPI: gather full radiation geometry on all ranks ----------------------------
+         ! Each rank has its local slice; all ranks need global geometry to compute F_ij
+         ! for any j, and for the shadow BVH.
+         ! ---------------------------------------------------------------------------------
+         nLocal       = n
+         myRank       = ParEnv % MyPE
+         nProcs       = ParEnv % PEs
+         vf_comm      = ParEnv % ActiveComm
+
+         IF ( nProcs > 1 ) THEN
+           CALL Info(Caller,'MPI mode: gathering radiation geometry across '//I2S(nProcs)//' ranks',Level=5)
+           ALLOCATE( nLocals_vf(0:nProcs-1), iStarts_vf(0:nProcs-1) )
+           CALL GatherMeshInfo( vf_comm, nProcs, nLocal, n_global, iStart_local, &
+               nLocals_vf, iStarts_vf, Coord, Surf, Type, Normals, Areas )
+           n = n_global
+           IF ( .NOT. DoRadiators ) Ni = n_global
+           CALL Info(Caller,'Global radiation surfaces: '//I2S(n_global)// &
+               ', local: '//I2S(nLocal)//', iStart: '//I2S(iStart_local),Level=5)
+         ELSE
+           n_global     = n
+           iStart_local = 0
+         END IF
+
+         ! Allocate local Factors for C kernel (nLocal rows × n_global cols)
+         ALLOCATE( Factors_local(nLocal * n_global), STAT=istat )
+         IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors_local')
+         Factors_local = 0.0_dp
+
          ! In order to speed up shadowing checks, if requested, reduce the mesh complexity by finding
          ! simply connected planar areas, and replace the mesh within by few quads or triangles. Also
          ! potentially finds circular planar areas (disabled atm). This scheme fails if the areas are
@@ -403,9 +437,16 @@
            RT_Coord => Coord
 
            IF (Combine3D) THEN
-             ! Automatic planar area reduction for a coarser shadow mesh
-             ! ---------------------------------------------------------
-             RT_Mesh => PlanarReduce(n, Normals, Coord, Mesh)
+             IF ( nProcs > 1 ) THEN
+               ! PlanarReduce needs a full Mesh_t which is not available after MPI
+               ! distribution; fall back to using the full gathered radiation mesh
+               ! as shadow mesh (RT_n=0 means the main elements are used).
+               CALL Warn(Caller,'MPI mode: PlanarReduce not available with distributed mesh.'// &
+                   ' Using full radiation mesh for shadow testing.')
+             ELSE
+               ! Serial: automatic planar area reduction for a coarser shadow mesh
+               RT_Mesh => PlanarReduce(n, Normals, Coord, Mesh)
+             END IF
            ELSE
              ! Given surface OR volume shadow mesh from disk
              ! ---------------------------------------------
@@ -415,26 +456,58 @@
            ! Extract possible shadowing surfaces
            ! -----------------------------------
            CALL ExtractMeshInfo( RT_Mesh, RT_n, RT_Coord, RT_Surf, RT_Type, RT_Data, RT_Perm, ElimBBox = ElimBB )
+
+           ! MPI: gather shadow mesh to all ranks (all need full mesh for ray testing)
+           IF ( nProcs > 1 .AND. RT_n > 0 ) THEN
+             CALL Info(Caller,'MPI mode: gathering shadow mesh across ranks',Level=5)
+             CALL GatherRTMesh( vf_comm, nProcs, RT_n, RT_Coord, RT_Surf, RT_Type, RT_Data, RT_Perm )
+           END IF
+
            IF ( RT_n > 0 ) THEN
              CALL Info(Caller,'Using separate mesh for shadowing, #elements = '//I2S(RT_n),Level=5)
-             
+
              WRITE (Message,'(A,2F8.2)') 'Shadow mesh defined time (s):',&
                  CPUTime()-at2, Realtime()-rt2
              CALL Info( Caller,Message, Level=3 )
              at2 = CPUTime(); rt2 = RealTime()
            END IF
-             
+
            ! ... and finally the beef:
            ! -------------------------
            IF ( DoRadiators ) THEN
+             ! Radiators: no MPI row decomposition yet; serial path unchanged
+             ALLOCATE( Factors(NofRadiators * n_global), STAT=istat )
+             IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
              CALL RadiatorFactors3d( n, Surf, TYPE, Coord, Normals, RT_n, RT_Surf, &
                   RT_Data, RT_Perm, RT_Type, RT_Coord, NofRadiators, Radiators, LineFlag, &
                        Factors, AreaEPS, FactEPS, RayEPS, Nrays, LineInteg, TriInteg, QuadInteg, CombineInt )
            ELSE
              CALL ViewFactors3D( n, Surf, Type, Coord, Normals, RT_n, RT_Surf, &
-                  RT_Data, RT_Perm, RT_Type, RT_Coord, Factors, AreaEPS, FactEPS, RayEPS, &
+                  RT_Data, RT_Perm, RT_Type, RT_Coord, Factors_local, AreaEPS, FactEPS, RayEPS, &
                       Nrays, LineInteg, TriInteg, QuadInteg, CombineInt, &
-                      0, n, 0 )   ! iStart=0, nLocal=n, mpiRank=0 (serial)
+                      iStart_local, nLocal, myRank )
+
+             ! Gather local rows from all ranks → full n_global × n_global matrix
+             ALLOCATE( Factors(n_global * n_global), STAT=istat )
+             IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error for Factors')
+
+             IF ( nProcs > 1 ) THEN
+               BLOCK
+                 INTEGER, ALLOCATABLE :: recvcounts(:), displs(:)
+                 ALLOCATE( recvcounts(0:nProcs-1), displs(0:nProcs-1) )
+                 recvcounts = nLocals_vf * n_global
+                 displs(0)  = 0
+                 DO i = 1, nProcs-1
+                   displs(i) = displs(i-1) + recvcounts(i-1)
+                 END DO
+                 CALL MPI_Allgatherv( Factors_local, nLocal*n_global, MPI_DOUBLE_PRECISION, &
+                     Factors, recvcounts, displs, MPI_DOUBLE_PRECISION, vf_comm, mpiErr )
+                 DEALLOCATE( recvcounts, displs )
+               END BLOCK
+             ELSE
+               Factors = Factors_local
+             END IF
+             DEALLOCATE( Factors_local )
            END IF
 
            IF (RT_n>0) THEN
@@ -461,8 +534,9 @@
        CALL Info( Caller,Message, Level=3 )
        at2 = CPUTime(); rt2 = RealTime()
               
-       IF(InfoActive(12)) CALL ViewFactorsLumping()       
-       CALL WriteOutputFile(DoRadiators,Ni,n,Factors,RadiationBody)
+       IF(InfoActive(12)) CALL ViewFactorsLumping()
+       ! Only rank 0 writes — all ranks have identical Factors after the gather
+       IF ( myRank == 0 ) CALL WriteOutputFile(DoRadiators,Ni,n,Factors,RadiationBody)
 
        WRITE (Message,'(A,2F8.2)') 'View factors saved in time (s):',&
            CPUTime()-at2, realtime()-rt2
@@ -471,6 +545,7 @@
 
        DEALLOCATE( Surf, Factors, Areas )
        IF ( .NOT. CylindricSymmetry ) DEALLOCATE(Normals, Type)
+       IF ( ALLOCATED(nLocals_vf) ) DEALLOCATE( nLocals_vf, iStarts_vf )
        
      END DO  ! Of radiation RadiationBody
 
@@ -481,6 +556,181 @@
      CALL FLUSH(6)
 
 CONTAINS
+
+!------------------------------------------------------------------------------
+!> All-gather local radiation mesh arrays to full global arrays on every rank.
+!> On exit: Coord, Surf, Type, Normals, Areas contain the full n_global data.
+!> nLocals_out and iStarts_out (0-based) are filled for use in later Allgatherv.
+!------------------------------------------------------------------------------
+   SUBROUTINE GatherMeshInfo( comm, nProcs, nLocal, n_global, iStart_local, &
+       nLocals_out, iStarts_out, Coord, Surf, Type, Normals, Areas )
+     IMPLICIT NONE
+     INTEGER, INTENT(IN)    :: comm, nProcs, nLocal
+     INTEGER, INTENT(OUT)   :: n_global, iStart_local
+     INTEGER, INTENT(OUT)   :: nLocals_out(0:nProcs-1), iStarts_out(0:nProcs-1)
+     REAL(KIND=dp), POINTER,   INTENT(INOUT) :: Coord(:)
+     INTEGER,    ALLOCATABLE, INTENT(INOUT) :: Surf(:)
+     INTEGER,    POINTER,     INTENT(INOUT) :: Type(:)
+     REAL(KIND=dp), ALLOCATABLE, INTENT(INOUT) :: Normals(:), Areas(:)
+
+     INTEGER :: i, ierr
+     INTEGER, ALLOCATABLE :: rc1(:), d1(:), rc3(:), d3(:), rc4(:), d4(:)
+     REAL(KIND=dp), ALLOCATABLE :: tmp_r1(:), tmp_r3(:)
+     INTEGER,       ALLOCATABLE :: tmp_i1(:), tmp_i4(:)
+     REAL(KIND=dp), POINTER     :: new_Coord(:)
+     INTEGER,       POINTER     :: new_Type(:)
+
+     ! Exchange local counts to determine global layout
+     CALL MPI_Allgather( nLocal, 1, MPI_INTEGER, nLocals_out, 1, MPI_INTEGER, comm, ierr )
+
+     n_global  = SUM( nLocals_out )
+     iStarts_out(0) = 0
+     DO i = 1, nProcs-1
+       iStarts_out(i) = iStarts_out(i-1) + nLocals_out(i-1)
+     END DO
+     iStart_local = iStarts_out( nLocals_out(0) )   ! placeholder; recomputed below
+     ! Recompute correctly via scan
+     iStart_local = 0
+     DO i = 0, nProcs-1
+       IF ( nLocals_out(i) == nLocal .AND. i > 0 ) THEN
+         iStart_local = iStarts_out(i)
+         EXIT
+       END IF
+     END DO
+     ! Use MPI_Scan for correct rank-relative offset
+     CALL MPI_Scan( nLocal, iStart_local, 1, MPI_INTEGER, MPI_SUM, comm, ierr )
+     iStart_local = iStart_local - nLocal   ! exclusive prefix sum
+
+     ! Displacement arrays for Allgatherv
+     ALLOCATE( rc1(0:nProcs-1), d1(0:nProcs-1) )
+     ALLOCATE( rc3(0:nProcs-1), d3(0:nProcs-1) )
+     ALLOCATE( rc4(0:nProcs-1), d4(0:nProcs-1) )
+     rc1 = nLocals_out;     rc3 = 3*nLocals_out;    rc4 = 4*nLocals_out
+     d1(0) = 0; d3(0) = 0; d4(0) = 0
+     DO i = 1, nProcs-1
+       d1(i) = d1(i-1) + rc1(i-1)
+       d3(i) = d3(i-1) + rc3(i-1)
+       d4(i) = d4(i-1) + rc4(i-1)
+     END DO
+
+     ! Coord (3*n REAL)
+     ALLOCATE( tmp_r3(3*n_global), new_Coord(3*n_global) )
+     CALL MPI_Allgatherv( Coord, 3*nLocal, MPI_DOUBLE_PRECISION, &
+         tmp_r3, rc3, d3, MPI_DOUBLE_PRECISION, comm, ierr )
+     new_Coord = tmp_r3
+     DEALLOCATE( Coord );  Coord => new_Coord
+     DEALLOCATE( tmp_r3 )
+
+     ! Normals (3*n REAL)
+     ALLOCATE( tmp_r3(3*n_global) )
+     CALL MPI_Allgatherv( Normals, 3*nLocal, MPI_DOUBLE_PRECISION, &
+         tmp_r3, rc3, d3, MPI_DOUBLE_PRECISION, comm, ierr )
+     DEALLOCATE( Normals );  ALLOCATE( Normals(3*n_global) )
+     Normals = tmp_r3;  DEALLOCATE( tmp_r3 )
+
+     ! Areas (n REAL)
+     ALLOCATE( tmp_r1(n_global) )
+     CALL MPI_Allgatherv( Areas, nLocal, MPI_DOUBLE_PRECISION, &
+         tmp_r1, rc1, d1, MPI_DOUBLE_PRECISION, comm, ierr )
+     DEALLOCATE( Areas );  ALLOCATE( Areas(n_global) )
+     Areas = tmp_r1;  DEALLOCATE( tmp_r1 )
+
+     ! Surf (4*n INTEGER)
+     ALLOCATE( tmp_i4(4*n_global) )
+     CALL MPI_Allgatherv( Surf, 4*nLocal, MPI_INTEGER, &
+         tmp_i4, rc4, d4, MPI_INTEGER, comm, ierr )
+     DEALLOCATE( Surf );  ALLOCATE( Surf(4*n_global) )
+     Surf = tmp_i4;  DEALLOCATE( tmp_i4 )
+
+     ! Type (n INTEGER)
+     ALLOCATE( tmp_i1(n_global), new_Type(n_global) )
+     CALL MPI_Allgatherv( Type, nLocal, MPI_INTEGER, &
+         tmp_i1, rc1, d1, MPI_INTEGER, comm, ierr )
+     new_Type = tmp_i1
+     DEALLOCATE( Type );  Type => new_Type
+     DEALLOCATE( tmp_i1 )
+
+     DEALLOCATE( rc1, d1, rc3, d3, rc4, d4 )
+   END SUBROUTINE GatherMeshInfo
+
+!------------------------------------------------------------------------------
+!> All-gather shadow (ray-trace) mesh flat arrays to all ranks.
+!> RT_n on input is the local count; on exit it is the global count and all
+!> RT_* arrays hold the full global shadow mesh.
+!------------------------------------------------------------------------------
+   SUBROUTINE GatherRTMesh( comm, nProcs, RT_n, RT_Coord, RT_Surf, RT_Type, RT_Data, RT_Perm )
+     IMPLICIT NONE
+     INTEGER,          INTENT(IN)    :: comm, nProcs
+     INTEGER,          INTENT(INOUT) :: RT_n
+     REAL(KIND=dp),    POINTER,     INTENT(INOUT) :: RT_Coord(:)
+     INTEGER,          ALLOCATABLE, INTENT(INOUT) :: RT_Surf(:), RT_Perm(:)
+     REAL(KIND=dp),    ALLOCATABLE, INTENT(INOUT) :: RT_Data(:)
+     INTEGER,          POINTER,     INTENT(INOUT) :: RT_Type(:)
+
+     INTEGER :: i, RT_n_global, ierr
+     INTEGER, ALLOCATABLE :: RT_nLocals(:)
+     INTEGER, ALLOCATABLE :: rc1(:), d1(:), rc3(:), d3(:), rc4(:), d4(:)
+     REAL(KIND=dp), ALLOCATABLE :: tmp_r1(:), tmp_r3(:)
+     INTEGER,       ALLOCATABLE :: tmp_i1(:), tmp_i4(:)
+     REAL(KIND=dp), POINTER     :: new_Coord(:)
+     INTEGER,       POINTER     :: new_Type(:)
+     LOGICAL :: hasData
+
+     ALLOCATE( RT_nLocals(0:nProcs-1) )
+     CALL MPI_Allgather( RT_n, 1, MPI_INTEGER, RT_nLocals, 1, MPI_INTEGER, comm, ierr )
+     RT_n_global = SUM( RT_nLocals )
+
+     ALLOCATE( rc1(0:nProcs-1), d1(0:nProcs-1) )
+     ALLOCATE( rc3(0:nProcs-1), d3(0:nProcs-1) )
+     ALLOCATE( rc4(0:nProcs-1), d4(0:nProcs-1) )
+     rc1 = RT_nLocals;  rc3 = 3*RT_nLocals;  rc4 = 4*RT_nLocals
+     d1(0) = 0; d3(0) = 0; d4(0) = 0
+     DO i = 1, nProcs-1
+       d1(i) = d1(i-1) + rc1(i-1)
+       d3(i) = d3(i-1) + rc3(i-1)
+       d4(i) = d4(i-1) + rc4(i-1)
+     END DO
+
+     ! RT_Coord
+     ALLOCATE( tmp_r3(3*RT_n_global), new_Coord(3*RT_n_global) )
+     CALL MPI_Allgatherv( RT_Coord, 3*RT_n, MPI_DOUBLE_PRECISION, &
+         tmp_r3, rc3, d3, MPI_DOUBLE_PRECISION, comm, ierr )
+     new_Coord = tmp_r3;  DEALLOCATE( RT_Coord );  RT_Coord => new_Coord
+     DEALLOCATE( tmp_r3 )
+
+     ! RT_Surf
+     ALLOCATE( tmp_i4(4*RT_n_global) )
+     CALL MPI_Allgatherv( RT_Surf, 4*RT_n, MPI_INTEGER, &
+         tmp_i4, rc4, d4, MPI_INTEGER, comm, ierr )
+     DEALLOCATE( RT_Surf );  ALLOCATE( RT_Surf(4*RT_n_global) )
+     RT_Surf = tmp_i4;  DEALLOCATE( tmp_i4 )
+
+     ! RT_Type
+     ALLOCATE( tmp_i1(RT_n_global), new_Type(RT_n_global) )
+     CALL MPI_Allgatherv( RT_Type, RT_n, MPI_INTEGER, &
+         tmp_i1, rc1, d1, MPI_INTEGER, comm, ierr )
+     new_Type = tmp_i1;  DEALLOCATE( RT_Type );  RT_Type => new_Type
+     DEALLOCATE( tmp_i1 )
+
+     ! RT_Perm and RT_Data (optional — only present if shadow mesh has them)
+     hasData = ALLOCATED(RT_Data)
+     IF ( hasData ) THEN
+       ALLOCATE( tmp_r1(RT_n_global) )
+       CALL MPI_Allgatherv( RT_Data, RT_n, MPI_DOUBLE_PRECISION, &
+           tmp_r1, rc1, d1, MPI_DOUBLE_PRECISION, comm, ierr )
+       DEALLOCATE( RT_Data );  ALLOCATE( RT_Data(RT_n_global) )
+       RT_Data = tmp_r1;  DEALLOCATE( tmp_r1 )
+
+       ALLOCATE( tmp_i1(RT_n_global) )
+       CALL MPI_Allgatherv( RT_Perm, RT_n, MPI_INTEGER, &
+           tmp_i1, rc1, d1, MPI_INTEGER, comm, ierr )
+       DEALLOCATE( RT_Perm );  ALLOCATE( RT_Perm(RT_n_global) )
+       RT_Perm = tmp_i1;  DEALLOCATE( tmp_i1 )
+     END IF
+
+     RT_n = RT_n_global
+     DEALLOCATE( RT_nLocals, rc1, d1, rc3, d3, rc4, d4 )
+   END SUBROUTINE GatherRTMesh
 
 !------------------------------------------------------------------------------
    SUBROUTINE InitModel(Model,Mesh)

@@ -133,7 +133,8 @@
 
         SUBROUTINE ViewFactors3D(n, Surf, Type, Coord, Normals, &
           RT_n, RT_Surf, RT_Data, RT_Perm, RT_Type, RT_Coord, &
-              Factors, Feps, Aeps, Reps, Nr, NInteg2, NInteg3, NInteg4, Combine) BIND(C)
+              Factors, Feps, Aeps, Reps, Nr, NInteg2, NInteg3, NInteg4, Combine, &
+              iStart, nLocal, mpiRank) BIND(C)
 
             USE, INTRINSIC :: ISO_C_BINDING
             IMPLICIT NONE
@@ -148,6 +149,7 @@
 
             REAL(KIND=dp) :: Feps, Aeps, Reps
             INTEGER :: Nr, NInteg2, NInteg3, NInteg4, Combine
+            INTEGER :: iStart, nLocal, mpiRank
         END SUBROUTINE ViewFactors3D
 
 
@@ -431,7 +433,8 @@
            ELSE
              CALL ViewFactors3D( n, Surf, Type, Coord, Normals, RT_n, RT_Surf, &
                   RT_Data, RT_Perm, RT_Type, RT_Coord, Factors, AreaEPS, FactEPS, RayEPS, &
-                      Nrays, LineInteg, TriInteg, QuadInteg, CombineInt )
+                      Nrays, LineInteg, TriInteg, QuadInteg, CombineInt, &
+                      0, n, 0 )   ! iStart=0, nLocal=n, mpiRank=0 (serial)
            END IF
 
            IF (RT_n>0) THEN

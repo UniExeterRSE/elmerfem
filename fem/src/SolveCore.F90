@@ -40,6 +40,8 @@
 !>  Extracted from SolverUtils.
 !------------------------------------------------------------------------------
 
+#include "../config.h"
+
 MODULE SolveCore
 
     USE SolverUtils

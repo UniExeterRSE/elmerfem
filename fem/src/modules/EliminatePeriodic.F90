@@ -44,6 +44,7 @@ INTEGER FUNCTION EliminatePeriodic( Model, Solver, A, b, x, n, DOFs, Norm )
   USE Types
   USE Lists
   USE SolverUtils
+  USE SolveCore, ONLY : SolveLinearSystem
   USE CRSmatrix
   USE GeneralUtils
 

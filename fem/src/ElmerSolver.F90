@@ -76,12 +76,14 @@
          ReloadInputFile, LoadRestartFile, GetProcAddr, LoadModel, FreeModel, WritePostFile, &
          CompleteModelKeywords, SetIntegerParametersMatc, SetRealParametersMatc
 #endif
-     USE SolverUtils, ONLY: GetControlValue, FinalizeLumpedMatrix, UpdateExportedVariables, &
-         UpdateIpPerm, VectorValuesRange
-     USE MeshUtils, ONLY : MeshExtrude, MeshExtrudeSlices, &
-         CoordinateTransformation, InitializeElementDescriptions, ReleaseMesh, &
+     USE SolverUtils, ONLY: UpdateExportedVariables, UpdateIpPerm, VectorValuesRange
+     USE SolveCore, ONLY: GetControlValue, FinalizeLumpedMatrix
+     USE MeshUtils, ONLY : InitializeElementDescriptions, ReleaseMesh, &
          CalculateMeshPieces, SetActiveElementsTable, SetCurrentMesh, &
-         MarkSharpEdges, TagBodiesUsingCondition, RigidMeshMapping
+         MarkSharpEdges
+     USE MeshTransform, ONLY : CoordinateTransformation, RigidMeshMapping
+     USE MeshTagging, ONLY : TagBodiesUsingCondition
+     USE MeshExtrusion, ONLY : MeshExtrude, MeshExtrudeSlices
      USE MortarUtils, ONLY : PeriodicProjector
      USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, AddExecWhenFlag, &
          PredictorCorrectorControl, SingleSolver, SolveEquations, SolverActivate, &

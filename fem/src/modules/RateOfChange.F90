@@ -49,6 +49,8 @@
      USE Integration
      USE ElementDescription
      USE SolverUtils
+     USE SolveCore, ONLY : SolveLinearSystem, SolveSystem
+     USE BoundaryConditionUtils, ONLY : SetDirichletBoundaries
      USE ElementUtils
 
      IMPLICIT NONE

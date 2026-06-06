@@ -50,7 +50,8 @@ MODULE CutFemUtils
   USE MatrixAssembly
   USE MeshUtils, ONLY : AllocateMesh, FindMeshEdges, MeshStabParams
   USE ModelDescription, ONLY : FreeMesh
-  USE SolverUtils, ONLY : GaussPointsAdapt, SolveLinearSystem, VectorValuesRange
+  USE SolverUtils, ONLY : GaussPointsAdapt, VectorValuesRange
+  USE SolveCore, ONLY : SolveLinearSystem
   USE ParallelUtils
   USE MeshUtils, ONLY : PointInMesh
   

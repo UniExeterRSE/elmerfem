@@ -49,10 +49,11 @@ MODULE Adaptive
   USE ElementUtils, ONLY : ElementArea
   USE ModelDescription
   USE MeshUtils, ONLY : AllocateMesh, AllocatePDefinitions, FindMeshEdges, &
-      LoadMesh2, MeshStabParams, PrepareMesh, ReleaseMesh, &
+      MeshStabParams, ReleaseMesh, &
       ReleaseMeshEdgeTables, ReleaseMeshFaceTables, SetActiveElementsTable, &
       SetCurrentMesh, TransferCoordAndTime, UpdateSolverMesh, WriteMeshToDisk, &
       WriteMeshToDisk2
+  USE MeshLoad, ONLY : LoadMesh2, PrepareMesh
   USE MeshRemeshing
   USE SaveUtils, ONLY : SaveGmshOutput
   USE DefUtils, ONLY: GetMaterial, GetReal, GetBodyForce, GetSolverParams, GetLogical, &

@@ -42,7 +42,7 @@
 
 MODULE MeshTagging
 
-    USE MeshUtils
+    USE MeshBasics
     IMPLICIT NONE
 
 CONTAINS

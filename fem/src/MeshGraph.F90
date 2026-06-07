@@ -42,7 +42,7 @@
 
 MODULE MeshGraph
 
-    USE MeshUtils
+    USE MeshBasics
     IMPLICIT NONE
 
 CONTAINS

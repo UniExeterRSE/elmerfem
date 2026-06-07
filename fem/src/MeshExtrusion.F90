@@ -42,7 +42,7 @@
 
 MODULE MeshExtrusion
 
-    USE MeshUtils
+    USE MeshBasics
     USE MeshLoad, ONLY : PrepareMesh
     IMPLICIT NONE
 

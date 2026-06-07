@@ -44,7 +44,7 @@
 
 MODULE SolveCore
 
-    USE SolverUtils
+    USE SolverBasics
     USE BoundaryConditionUtils
     IMPLICIT NONE
 

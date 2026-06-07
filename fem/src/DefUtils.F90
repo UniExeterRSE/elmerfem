@@ -50,9 +50,9 @@ MODULE DefUtils
 #include "../config.h"
 
    USE MeshGenerate
-   USE MeshUtils, ONLY : AllocateElement, SaveParallelInfo
+   USE MeshBasics, ONLY : AllocateElement, SaveParallelInfo
    USE ElementUtils
-   USE SolverUtils
+   USE SolverBasics
    USE SolveCore
    USE ContactUtils
    USE BoundaryConditionUtils

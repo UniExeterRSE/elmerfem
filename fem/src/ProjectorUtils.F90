@@ -42,7 +42,7 @@
 
 MODULE ProjectorUtils
 
-    USE SolverUtils
+    USE SolverBasics
     IMPLICIT NONE
 
 CONTAINS

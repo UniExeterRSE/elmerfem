@@ -76,9 +76,9 @@
          ReloadInputFile, LoadRestartFile, GetProcAddr, LoadModel, FreeModel, WritePostFile, &
          CompleteModelKeywords, SetIntegerParametersMatc, SetRealParametersMatc
 #endif
-     USE SolverUtils, ONLY: UpdateExportedVariables, UpdateIpPerm, VectorValuesRange
+     USE SolverBasics, ONLY: UpdateExportedVariables, UpdateIpPerm, VectorValuesRange
      USE SolveCore, ONLY: GetControlValue, FinalizeLumpedMatrix
-     USE MeshUtils, ONLY : InitializeElementDescriptions, ReleaseMesh, &
+     USE MeshBasics, ONLY : InitializeElementDescriptions, ReleaseMesh, &
          CalculateMeshPieces, SetActiveElementsTable, SetCurrentMesh, &
          MarkSharpEdges
      USE MeshTransform, ONLY : CoordinateTransformation, RigidMeshMapping
@@ -2049,7 +2049,7 @@
    SUBROUTINE InitCond()
 !------------------------------------------------------------------------------
      USE Integration, ONLY : GaussIntegrationPoints_t
-     USE SolverUtils, ONLY : GaussPointsAdapt
+     USE SolverBasics, ONLY : GaussPointsAdapt
      USE ElementDescription, ONLY : ElementInfo
      
      TYPE(Element_t), POINTER :: Edge

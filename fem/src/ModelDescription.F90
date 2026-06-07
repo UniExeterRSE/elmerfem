@@ -47,7 +47,7 @@ MODULE ModelDescription
     USE SParIterGlobals
     USE ParallelUtils, ONLY : ParallelReduction, ParallelIter, ParallelInitMatrix
     USE ElementUtils, ONLY : CreateMatrix, FreeMatrix
-    USE MeshUtils, ONLY : MeshStabParams, ReleaseMesh, SetMeshDimension, &
+    USE MeshBasics, ONLY : MeshStabParams, ReleaseMesh, SetMeshDimension, &
         SetMeshMaxDOFs, SetMeshPartitionOffSet, &
         RadiationParallelMeshDistribute, GetDefs
     USE MeshGraph, ONLY : Graph_Deallocate

@@ -48,7 +48,7 @@ MODULE MeshPartition
   USE ParallelUtils
   USE CoordinateSystems
   USE ElementDescription, ONLY : GetElementType
-  USE MeshUtils, ONLY : AllocateMesh, FindMeshEdges, &
+  USE MeshBasics, ONLY : AllocateMesh, FindMeshEdges, &
       FindMeshEdges2D, FindMeshEdges3D, FindMeshFaces3D, &
       ReleaseMesh, ReleaseMeshEdgeTables, ReleaseMeshFaceTables, GetDefs
   USE MeshTransform, ONLY : BackCoordinateTransformation, CoordinateTransformation
@@ -92,7 +92,7 @@ CONTAINS
                                 StartImbalanceTol, TolChange, MinElems )
 
 #ifdef HAVE_ZOLTAN
-    USE MeshUtils
+    USE MeshBasics
     USE Zoltan
 #endif
 

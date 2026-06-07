@@ -38,7 +38,7 @@ MODULE BlockSolve
  USE IterativeMethods, ONLY : PseudoZDotProd
  USE IterSolve, ONLY : IterSolver
  USE ElementDescription, ONLY : ElementInfo, EdgeElementInfo
- USE SolverUtils, ONLY : LagrangeMultiplierName, ScaleLinearSystem, &
+ USE SolverBasics, ONLY : LagrangeMultiplierName, ScaleLinearSystem, &
      BackScaleLinearSystem, DiagonalMatrixSumming, &
      StructureCouplingAssembly, FSICouplingAssembly, &
      MassMatrixAssembly, VectorValuesRange, LaplaceMatrixAssembly

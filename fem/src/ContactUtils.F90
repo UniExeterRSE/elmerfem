@@ -42,7 +42,7 @@
 
 MODULE ContactUtils
 
-    USE SolverUtils
+    USE SolverBasics
     USE SolveCore, ONLY : CalculateLoads
     IMPLICIT NONE
 

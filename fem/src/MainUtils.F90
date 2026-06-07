@@ -53,7 +53,7 @@ MODULE MainUtils
   USE ElementDescription, ONLY : SwapRefElemNodes
   USE ElementUtils, ONLY : CreateOdeMatrix, CreateMatrix
   
-  USE MeshUtils, ONLY : CreateDiscontMesh, MakePermUsingMask, MeshStabParams, &
+  USE MeshBasics, ONLY : CreateDiscontMesh, MakePermUsingMask, MeshStabParams, &
       ReleaseMesh, SetActivEelementsTable, SetCurrentMesh, SetMeshMaxDOFs, &
       TransferCoordAndTime, UpdateSolverMesh
   USE MeshTransform, ONLY : BackCoordinateTransformation, CoordinateTransformation
@@ -62,7 +62,7 @@ MODULE MainUtils
   USE MeshLoad, ONLY : LoadMesh2
   USE MeshSplit, ONLY : SplitMeshEqual
   
-  USE SolverUtils, ONLY : CalculateEntityWeights, &
+  USE SolverBasics, ONLY : CalculateEntityWeights, &
       CalculateNodalWeights, CheckStepSize, ComputeChange, &
       ComputeNorm, CreateIpPerm, ScaleLinearSystem, BackScaleLinearSystem, &
       InitializeTimestep, InitializeToZero, InvalidateVariable, &
@@ -469,7 +469,7 @@ CONTAINS
       USE SParIterComm
       USE Interpolation
       USE CoordinateSystems
-      USE MeshUtils, ONLY: ReleaseMesh
+      USE MeshBasics, ONLY: ReleaseMesh
       TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
       TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
       LOGICAL, OPTIONAL :: UseQuadrantTree

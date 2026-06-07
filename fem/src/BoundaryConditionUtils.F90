@@ -43,7 +43,7 @@
 
 MODULE BoundaryConditionUtils
 
-    USE SolverUtils
+    USE SolverBasics
     IMPLICIT NONE
 
 CONTAINS

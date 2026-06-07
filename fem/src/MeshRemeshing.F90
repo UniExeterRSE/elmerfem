@@ -35,7 +35,7 @@ MODULE MeshRemeshing
 USE Types
 USE Lists
 USE Messages
-USE MeshUtils, ONLY : MarkSharpEdges, MarkSharpNodes, GetDefs
+USE MeshBasics, ONLY : MarkSharpEdges, MarkSharpNodes, GetDefs
 USE MeshLoad, ONLY : PrepareMesh
 USE MeshPartition
 USE SparIterComm

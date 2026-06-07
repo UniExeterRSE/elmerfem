@@ -80,7 +80,7 @@ END SUBROUTINE MarchingODESolver_init
 SUBROUTINE MarchingODESolver( Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE MeshTransform, ONLY : DetectExtrudedStructure
-  USE MeshUtils, ONLY : MarkBCNodes
+  USE MeshBasics, ONLY : MarkBCNodes
   USE DefUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------

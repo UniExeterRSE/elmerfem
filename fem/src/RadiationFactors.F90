@@ -2264,12 +2264,16 @@
 
        ! Solve serially and distribute the result afterwards, memory bandwidth
        ! destroys the performance otherwise (at least for non-supercomputer systems)
-       FirstActive = -1
-       DO i=0,ParEnv % PEs-1
-         IF (ActiveTasks(i)) THEN
-           FirstActive=i; EXIT
-         END IF
-       END DO
+       IF ( ParEnv % PEs <= 1 ) THEN
+         FirstActive = ParEnv % myPE
+       ELSE
+         FirstActive = -1
+         DO i=0,ParEnv % PEs-1
+           IF (ActiveTasks(i)) THEN
+             FirstActive=i; EXIT
+           END IF
+         END DO
+       END IF
 
        scal = .TRUE.
        IF(PRESENT(Scaling)) scal = Scaling
@@ -2315,12 +2319,10 @@
                Gm % NumberOfRows = n
                mvProc = ADDRFUNC(fm_MatVec)
                CALL RadiationCG( n, Gm, x, b, eps, maxiter )
-!              CALL IterSolver( Gm, x, b, Solver, MatvecF=mvproc )
                DEALLOCATE(Gm)
              END BLOCK
            ELSE
              CALL RadiationCG( n, A, x, b, eps, maxiter )
-!            CALL IterSolver( A, x, b, Solver )
            END IF
          ELSE
            CALL DirectSolver( A, x, b, Solver )

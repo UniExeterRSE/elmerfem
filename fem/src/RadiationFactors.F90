@@ -1342,21 +1342,30 @@
        real(kind=dp) :: st=0
 
 
+       print*,'cr enter'; flush(6)
        !IF(Radiosity .AND. FirstTime) RETURN
 
        !CALL Info(Caller,'Computing factors...',Level=5)
 
+       print*,'cr enter 1'; flush(6)
        IF(FirstTime) CALL InitRadiationSolver(TSolver,Solver)
+       print*,'cr enter 2'; flush(6)
        CALL CreateRadiationMatrix(RadiationSurfaces)
+       print*,'cr enter 3'; flush(6)
 
        ALLOCATE(Emissivity(RadiationSurfaces), Reflectivity(RadiationSurfaces), &
            Absorptivity(RadiationSurfaces), STAT=istat)
+       print*,'cr enter 4'; flush(6)
        IF ( istat /= 0 ) CALL Fatal(Caller,'Memory allocation error 10.')
        CALL TabulateEmissivity()
+       print*,'cr enter 5'; flush(6)
 
        IF( Radiosity ) THEN
+       print*,'cr enter 6'; flush(6)
          CALL CalculateRadiosity()
+       print*,'cr enter 7'; flush(6)
        ELSE
+       print*,'cr enter 8'; flush(6)
          ! Fill the matrix for gebhardt factors
          CALL CalculateGebhartFactors()
          IF (UseFullMatrix) THEN
@@ -1364,9 +1373,12 @@
          ELSE
            CALL FreeMatrix(G);G => NULL()
          ENDIF
+       print*,'cr enter 9'; flush(6)
        END IF
 
+       print*,'cr enter 10'; flush(6)
        DEALLOCATE(Emissivity,Reflectivity,Absorptivity)
+       print*,'cr enter 11'; flush(6)
        
      END SUBROUTINE CalculateRadiation
 

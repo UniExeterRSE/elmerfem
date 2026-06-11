@@ -155,6 +155,8 @@
      CALL Info(Caller,'Computing radiation factors for heat transfer',       Level=5)
      CALL Info(Caller,'----------------------------------------------------',Level=10)
 
+     print*,'d 0'; flush(6)
+
      FullMatrix = GetLogical( Params, 'Radiation Factors Solver Full',Found) 
      IF(.NOT.Found) &
        FullMatrix = GetLogical( Params, 'Gebhart Factors Solver Full',Found) 
@@ -187,6 +189,7 @@
          CALL Info(Caller,'Using direct solver for radiation factors',Level=6)
        END IF
      END IF
+     print*,'d 1'; flush(6)
        
      ComputeViewFactors = GetLogical( Params, 'Compute View Factors',Found )
      ComputeRadiatorFactors = GetLogical( Params, 'Compute Radiator Factors',Found )
@@ -222,6 +225,7 @@
        END IF
        RETURN
      END IF
+     print*,'d 2'; flush(6)
        
      ! Check that the geometry has really changed before computing the viewfactors 
      IF(.NOT. FirstTime .AND. (UpdateViewFactors .OR. UpdateRadiatorFactors)) THEN
@@ -231,6 +235,7 @@
        END IF         
      END IF
 
+     print*,'d 3'; flush(6)
      ! If the geometry has not changed and Gebhart factors are fine return
      IF(.NOT. (FirstTime .OR. UpdateViewFactors .OR. UpdateGebhartFactors .OR. &
          UpdateRadiatorFactors .OR. Radiosity)) THEN
@@ -238,11 +243,13 @@
        RETURN
      END IF
 
+     print*,'d 4'; flush(6)
      IF( FirstTime .OR. UpdateViewFactors .OR. UpdateRadiatorFactors ) THEN
        ! This stays fixed unless the geometry changes. 
        CALL Info(Caller,'Total number of Radiation Surfaces '//I2S(RadiationSurfaces)// &
            ' out of '//I2S(Model % NumberOfBoundaryElements),Level=5)
      END IF
+     print*,'d 5'; flush(6)
        
 !-----------------------------------------------------------------------------------
 !    Check that the needed files exist if os assumed, if not, recompute
@@ -250,6 +257,7 @@
 !-----------------------------------------------------------------------------------
      CALL CheckFactorsFilesExist()
      
+     print*,'d 6'; flush(6)
 !------------------------------------------------------------------------------
 !    Rewrite the nodes for view factor computations if they have changed
 !    and compute the view factors and/or radiator factors with an external
@@ -262,6 +270,7 @@
            (.NOT. FirstTime .AND. (UpdateViewFactors .OR. UpdateRadiatorFactors))       
      END IF
 
+     print*,'d 7'; flush(6)
      IF(UpdateGeometry) THEN
        IF(GetLogical( Params,'Viewfactor Rigid Mesh Mapping', Found ) ) THEN 
          CALL Info(Caller,'Viewfactor geometry will be changed by its own rigid mesh mapping!',Level=4)
@@ -269,15 +278,19 @@
        END IF
      END IF
        
+     print*,'d 8'; flush(6)
      CALL ComputeViewFactorsAndRadiators()
 
+     print*,'d 9'; flush(6)
      IF(RadiatorsFound) THEN
        IF (FirstTime .OR. UpdateRadiatorFactors) CALL ReadRadiatorFactorsFromFile()
      END IF
+     print*,'d 10'; flush(6)
      IF( .NOT. DiffuseGrayRadiationFound ) THEN
        CALL Info(Caller,'No diffuse grey radiation found!',Level=12)
        RETURN       
      END IF
+     print*,'d 11'; flush(6)
 !------------------------------------------------------------------------------
 
      TopologyFixed = GetLogical( Params, 'Matrix Topology Fixed',Found)
@@ -289,6 +302,7 @@
 
 !------------------------------------------------------------------------------
 
+     print*,'d 12'; flush(6)
      IF (.NOT. ALLOCATED(TSolver % Mesh % VFStore)) THEN
        ALLOCATE(TSolver % Mesh % VFStore(MaxRadiationBody))
      END IF
@@ -320,6 +334,7 @@
        END IF
      END DO ! RadiationBody
 
+     print*,'d 13'; flush(6)
 !------------------------------------------------------------------------------
      
      IF(.NOT. (TopoCall .OR. TopologyTest .OR. TopologyFixed .OR. Radiosity) ) THEN       
@@ -328,6 +343,7 @@
 
      FirstTime = .FALSE.
      
+     print*,'d 14'; flush(6)
      IF( Radiosity ) THEN
        WRITE (Message,'(A,T35,ES15.4)') 'Radiosity vector determined (s)',CPUTime()-at
      ELSE
@@ -336,6 +352,7 @@
      CALL Info(Caller,Message,Level=4)
      CALL Info(Caller,'----------------------------------------------------',Level=5)
 
+     print*,'d 15'; flush(6)
 
    CONTAINS
 

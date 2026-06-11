@@ -1840,21 +1840,28 @@
        INTEGER, POINTER  :: TempPerm(:)
        REAL(KIND=dp), ALLOCATABLE :: SurfaceTemperature(:)
 
+       print*,'crad 1'; flush(6)
+
        Temperature => Null()
        IF(ASSOCIATED(TSolver % Variable))  THEN
          TempPerm => TSolver % Variable % Perm
          Temperature => TSolver % Variable % Values
        END IF
 
+       print*,'crad 2'; flush(6)
        IF(.NOT.ASSOCIATED(Temperature)) &
          CALL Fatal(Caller, &
               "Radiosity solution can't be completed without the temperature field.")
 
+       print*,'crad 3'; flush(6)
        Sigma = ListGetConstReal( Model % Constants,&
          'Stefan Boltzmann',UnfoundFatal=.TRUE. )
 
+       print*,'crad 4'; flush(6)
        ALLOCATE(SurfaceTemperature(RadiationSurfaces))
+       print*,'crad 5'; flush(6)
        CALL TabulateSurfaceTemperatures(SurfaceTemperature,Temperature,TempPerm)
+       print*,'crad 6'; flush(6)
 
        IF( InfoActive(30) ) THEN
          PRINT *,'Temp range:',MINVAL(SurfaceTemperature),MAXVAL(SurfaceTemperature)
@@ -1862,11 +1869,17 @@
          PRINT *,'Abs range:',MINVAL(Absorptivity),MAXVAL(Absorptivity)
        END IF
          
+       print*,'crad 7'; flush(6)
        IF( Spectral ) THEN
+       print*,'crad 8'; flush(6)
          CALL SpectralRadiosity(SurfaceTemperature)
+       print*,'crad 9'; flush(6)
        ELSE
+       print*,'crad 10'; flush(6)
          CALL ConstantRadiosity(SurfaceTemperature)
+       print*,'crad 11'; flush(6)
        END IF
+       print*,'crad 12'; flush(6)
      END SUBROUTINE CalculateRadiosity
        
 

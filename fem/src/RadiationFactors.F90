@@ -1899,7 +1899,7 @@
        REAL(KIND=dp) :: SurfaceTemperature(:)
  
        LOGICAL :: RBC
-       INTEGER :: i
+       INTEGER :: i,j
        REAL(KIND=dp) :: r, e, a, c, Temp, Black
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:), &
             RHS(:),RHS_d(:),SOL(:),SOL_d(:), Diag(:)
@@ -1923,14 +1923,22 @@
        ! ... and then the RHS:
        ! ---------------------
        DO i=1,RadiationSurfaces
+       if ( i > size(emissivity) ) stop 'crad emis'
          e = Emissivity(i)
+       if ( i > size(absorptivity) ) stop 'crad abosrp'
          a = Absorptivity(i)
          r = 1-a  ! 1-e
+       if ( i > size(relareas) ) stop 'crad relares'
          c = RelAreas(i) * (r/a)  ! (r/e) 
+       if ( i > size(surfacetemperature) ) stop 'crad surftemp'
          Temp = SurfaceTemperature(i)
          Black = Sigma*Temp**4
+       if ( i > size(rhs) ) stop 'crad rhs'
          RHS(i) = -c*e*Black
-         IF(Newton) RHS_d(i) = RHS(i)*(4/Temp)
+         IF(Newton) then
+       if ( i > size(rhs_d) ) stop 'crad rhs_D'
+                 RHS_d(i) = RHS(i)*(4/Temp)
+         end if
        END DO
 
     print*,'const rad 5'; flush(6)
@@ -1939,13 +1947,21 @@
     print*,'const rad 6'; flush(6)
        IF( RBC) THEN
          DO i=1,RadiationSurfaces
+       if ( i > size(elementnumbers) ) stop 'crad rbc elementnumbers'
            Element => Mesh % Elements(ElementNumbers(i))
+           if ( .not.associated(element) ) stop 'crad rbc element'
            IF ( ALLOCATED(Element % BoundaryInfo % Radiators)) THEN
+           if ( i>size(emissivity) ) stop 'crad rbc emis'
              e = Emissivity(i)
+           if ( i>size(absorptivity) ) stop 'crad rbc absorp'
              a = Absorptivity(i)
              !r = Reflectivity(i)
              r = 1-a  ! e
+           if ( i>size(relareas) ) stop 'crad rbc relareas'
              c = RelAreas(i) * (r/a) !(r/e)
+           if ( i>size(rhs) ) stop 'crad rbc rhs'
+           if ( size(element % boundaryinfo % radiators) /= size(radiatorpowers) ) stop 'crad rbc rhs/pow'
+             j = MIN(SIZE(Element % BoundaryInfo % Radiators), SIZE(RadiatorPowers))
              RHS(i) = RHS(i) - c*r* & 
                  SUM(Element % BoundaryInfo % Radiators*RadiatorPowers)
            END IF
@@ -1966,7 +1982,11 @@
 
        ! Store the results for access by e.g. heat equation solvers:
        !------------------------------------------------------------
-       CALL UpdateRadiosityFactors(SOL,SOL_d)
+       IF(Newton) THEN
+         CALL UpdateRadiosityFactors(SOL,SOL_d)
+       ELSE
+         CALL UpdateRadiosityFactors(SOL)
+       END IF
     print*,'const rad 10'; flush(6)
      END SUBROUTINE ConstantRadiosity
        
@@ -2203,7 +2223,11 @@
 
        ! Store the results for access by e.g. heat equation solvers:
        !------------------------------------------------------------
-       CALL UpdateRadiosityFactors(SOL,SOL_d,EffAbs,EffTemp)
+       IF(Newton) THEN
+         CALL UpdateRadiosityFactors(SOL,SOL_d,EffAbs,EffTemp)
+       ELSE
+         CALL UpdateRadiosityFactors(SOL,EffAbs=EffAbs,EffTemp=EffTemp)
+       END IF
      END SUBROUTINE SpectralRadiosity
      
 
@@ -2431,8 +2455,6 @@
        END BLOCK
      END SUBROUTINE RadiationLinearSolver
 
-#define TESTCG
-#ifdef TESTCG
      ! Tailored local CG algo for speed testing (somewhat faster than any of the 
      ! library routines but not so much...)
      !-------------------------------------------------------------------------
@@ -2496,14 +2518,13 @@
        WRITE (*, '(I8, E11.4)') iter, residual
        DEALLOCATE(r, p, q)
      END SUBROUTINE RadiationCG
-#endif
 
 
      ! Update the outside (heat equation solver) view of the radiosities:
      ! ------------------------------------------------------------------
      SUBROUTINE UpdateRadiosityFactors(SOL,SOL_d,EffAbs,EffTemp)
-       REAL(KIND=dp) :: SOL(:), SOL_d(:)
-       REAL(KIND=dp), OPTIONAL :: EffAbs(:), EffTemp(:)
+       REAL(KIND=dp) :: SOL(:)
+       REAL(KIND=dp), OPTIONAL :: SOL_d(:), EffAbs(:), EffTemp(:)
        
        TYPE(Element_t), POINTER :: Element
        INTEGER :: i
@@ -2527,14 +2548,14 @@
          END IF
 
          RadiosityFactors % Factors(1) = SOL(i)
-         IF(Newton) RadiosityFactors % Factors(2) = SOL_d(i)
+         IF(Newton .AND. PRESENT(SOL_d)) RadiosityFactors % Factors(2) = SOL_d(i)
          IF(PRESENT(EffAbs))  RadiosityFactors % Factors(3) = EffAbs(i)
          IF(PRESENT(EffTemp)) RadiosityFactors % Factors(4) = EffTemp(i)
        END DO
 
        IF(InfoActive(30)) THEN
          PRINT *,'SOL_0 range:',MINVAL(SOL),MAXVAL(SOL),SUM(SOL)/SIZE(SOL)       
-         IF(Newton) PRINT *,'SOL_d range:',MINVAL(SOL_d),MAXVAL(SOL_d),SUM(SOL_d)/SIZE(SOL_d)
+         IF(Newton .AND. PRESENT(SOL_d)) PRINT *,'SOL_d range:',MINVAL(SOL_d),MAXVAL(SOL_d),SUM(SOL_d)/SIZE(SOL_d)
        END IF
        
      END SUBROUTINE UpdateRadiosityFactors

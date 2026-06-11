@@ -1113,13 +1113,17 @@
        DG = ListGetLogical(Params, 'Discontinuous Galerkin',Found ) .OR. & 
             ListGetLogical(Params, 'DG Reduced Basis',Found ) 
  
-    print*,'rad s 1'
+    print*,'rad s 1: RadiationSurfaces=',RadiationSurfaces,' nBulk=',nBulk,' size(ElementNumbers)=',size(ElementNumbers)
        DO i=1,RadiationSurfaces
        if ( i>size(elementnumbers) ) stop 'elemnent numbers'
+       print *,'  i=',i,' ElementNumbers(i)=',ElementNumbers(i)
          Element => Mesh % Elements(ElementNumbers(i))
          if ( .not. associated(element) ) stop 'elemnent'
          n = GetElementNOFNodes(Element)
-         if ( n<3 .or. n>4 ) stop 'n'
+         if ( n<3 .or. n>4 ) then
+           print *,'WARNING: n=',n,' for element i=',i,' ElementNumber=',ElementNumbers(i),' Element%Type%ElementCode=',Element%Type%ElementCode
+           cycle
+         end if
          IF( DG ) THEN
                  stop 'dg'
            CALL DgRadiationIndexes(Element,n,DGInds,.TRUE.)
@@ -2412,6 +2416,8 @@
          END IF
          x = x * bscal * Diag
        END IF
+
+       IF ( ParEnv % Pes <= 1 ) RETURN
 
        ! Distribute the linear system result
        BLOCK

@@ -2272,8 +2272,6 @@
        REAL(KIND=dp) :: bscal, eps
        INTEGER :: i,j, maxiter, FirstActive
 
-       real(kind=dp) :: st=0
-
        ! Solve serially and distribute the result afterwards, memory bandwidth
        ! destroys the performance otherwise (at least for non-supercomputer systems)
        DO i=0,ParEnv % PEs-1
@@ -2341,12 +2339,12 @@
 
        ! Distribute the linear system result
        BLOCK
-         INTEGER :: sz, Status(MPI_STATUS_SIZE), ierr, SendInfo(n), RecvInfo(n)
-         REAL(KIND=dp) :: y(n)
-         INTEGER, ALLOCATABLE :: RecvPerm(:)
-
+         INTEGER :: sz, Status(MPI_STATUS_SIZE), ierr
+         INTEGER, ALLOCATABLE :: SendInfo(:), RecvInfo(:), RecvPerm(:)
+         REAL(KIND=dp), ALLOCATABLE :: y(:)
 
          IF(ParEnv % myPE==FirstActive ) THEN
+           ALLOCATE(SendInfo(n))
            DO i=1,n
              Element => Mesh % Elements(ElementNumbers(i))
              SendInfo(i) = Element % GElementIndex
@@ -2358,6 +2356,7 @@
              CALL MPI_BSEND(x,n,MPI_DOUBLE_PRECISION,i,12007,ELMER_COMM_WORLD,ierr)
            END DO
          ELSE
+           ALLOCATE(RecvInfo(n), y(n))
            CALL MPI_RECV( RecvInfo,n,MPI_INTEGER,FirstActive,12006,ELMER_COMM_WORLD,status,ierr )
            CALL MPI_RECV( y,n,MPI_DOUBLE_PRECISION,FirstActive,12007,ELMER_COMM_WORLD,status,ierr )
 
@@ -2391,9 +2390,12 @@
        TYPE(Matrix_t), POINTER :: A
 
        REAL(KIND=dp):: alpha, beta, rho, oldrho
-       REAL(KIND=dp) :: r(n), p(n), q(n), z(n), s
+       REAL(KIND=dp), ALLOCATABLE :: r(:), p(:), q(:)
+       REAL(KIND=dp) :: s
        INTEGER :: iter, i, j, k
        REAL(KIND=dp) :: residual, eps2,st
+
+       ALLOCATE(r(n), p(n), q(n))
 
        eps2 = eps*eps
 
@@ -2440,6 +2442,7 @@
        r = b - r
        residual = SQRT(SUM(r*r))
        WRITE (*, '(I8, E11.4)') iter, residual
+       DEALLOCATE(r, p, q)
      END SUBROUTINE RadiationCG
 #endif
 

@@ -306,32 +306,39 @@
      IF (.NOT. ALLOCATED(TSolver % Mesh % VFStore)) THEN
        ALLOCATE(TSolver % Mesh % VFStore(MaxRadiationBody))
      END IF
+     print*,'d 12.1'; flush(6)
 
      DO RadiationBody = 1,MaxRadiationBody
        bt = CPUTime()
 
        CALL Info(Caller,'Computing area info for set '//I2S(RadiationBody),Level=12)
+     print*,'d 12.2', RadiationBody; flush(6)
        CALL GetBodyRadiationSurfaceInfo(RadiationBody)
        IF(RadiationSurfaces == 0)  CYCLE
 
+     print*,'d 12.3', RadiationBody; flush(6)
        IF(FirstTime .OR. UpdateViewFactors) THEN
          IF ( .NOT. ReadViewFactorsFromFile(RadiationBody)) CYCLE
        END IF
+     print*,'d 12.4', RadiationBody; flush(6)
 
        ! and finally, compute the Gebhart factor or radiosities:
        ! -------------------------------------------------------
        ViewFactors => TSolver % Mesh % VFStore(RadiationBody) % VF
+     print*,'d 12.5', RadiationBody; flush(6)
        IF(.NOT.CheckForQuickFactors()) THEN
          IF( MaxRadiationBody > 1 ) &
            CALL Info(Caller,'Computing radiation for set '//I2S(RadiationBody),Level=12)
          CALL CalculateRadiation()
        END IF
+     print*,'d 12.6', RadiationBody; flush(6)
 
        IF(MaxRadiationBody > 1) THEN
          bt = CPUTime()-bt
          WRITE (Message,'(A,T35,ES15.4)') 'Radiation body '//I2S(RadiationBody)//' done (s)',bt
          CALL Info(Caller,Message)
        END IF
+     print*,'d 12.7', RadiationBody; flush(6)
      END DO ! RadiationBody
 
      print*,'d 13'; flush(6)

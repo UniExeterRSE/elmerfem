@@ -1113,17 +1113,27 @@
        DG = ListGetLogical(Params, 'Discontinuous Galerkin',Found ) .OR. & 
             ListGetLogical(Params, 'DG Reduced Basis',Found ) 
  
+    print*,'rad s 1'
        DO i=1,RadiationSurfaces
+       if ( i>size(elementnumbers) ) stop 'elemnent numbers'
          Element => Mesh % Elements(ElementNumbers(i))
+         if ( .not. associated(element) ) stop 'elemnent'
          n = GetElementNOFNodes(Element)
+         if ( n<3 .or. n>4 ) stop 'n'
          IF( DG ) THEN
+                 stop 'dg'
            CALL DgRadiationIndexes(Element,n,DGInds,.TRUE.)
            Inds => DGInds(1:n)
          ELSE
            Inds => Element % NodeIndexes(1:n)
+           if ( any(inds<1) .or. any(inds>mesh %numberofnodes) ) stop 'inds'
          END IF
+           if ( i>size(surft)) stop 'surft'
+           if ( any(inds > size(tperm)) ) stop 'tmperm'
+           if (any(tperm(inds)<=0) .or. any(tperm(inds)>SIZE(T)) ) stop 'T'
          SurfT(i) = SUM(T(Tperm(Inds)))/n
        END DO
+    print*,'rad s 2'
      END SUBROUTINE TabulateSurfaceTemperatures
 
 
@@ -1894,18 +1904,22 @@
        REAL(KIND=dp), ALLOCATABLE :: RadiatorPowers(:), &
             RHS(:),RHS_d(:),SOL(:),SOL_d(:), Diag(:)
 
+    print*,'const rad 1'; flush(6)
        ALLOCATE(RHS(RadiationSurfaces),SOL(RadiationSurfaces),Diag(RadiationSurfaces))
        RHS = 0.0_dp
 
+    print*,'const rad 2'; flush(6)
        IF (Newton) THEN
          ALLOCATE( RHS_d(RadiationSurfaces), SOL_d(RadiationSurfaces) )
          RHS_d = 0.0_dp
        END IF
 
+    print*,'const rad 3'; flush(6)
        ! Assemble the equations, first coefficient matrix:
        ! -------------------------------------------------
        CALL RadiosityAssembly(RadiationSurfaces,G,Diag)
 
+    print*,'const rad 4'; flush(6)
        ! ... and then the RHS:
        ! ---------------------
        DO i=1,RadiationSurfaces
@@ -1919,8 +1933,10 @@
          IF(Newton) RHS_d(i) = RHS(i)*(4/Temp)
        END DO
 
+    print*,'const rad 5'; flush(6)
        ! Check for radiation sources:
        RBC = CheckForRadiators(RadiatorPowers)
+    print*,'const rad 6'; flush(6)
        IF( RBC) THEN
          DO i=1,RadiationSurfaces
            Element => Mesh % Elements(ElementNumbers(i))
@@ -1935,19 +1951,23 @@
            END IF
          END DO
        END IF
+    print*,'const rad 7'; flush(6)
 
        ! Solve for the radiosities and their derivatives with respect
        ! to the temperature
        !-------------------------------------------------------------
        CALL RadiationLinearSolver(RadiationSurfaces,G,SOL,RHS,Diag,Solver)
+    print*,'const rad 8', newton; flush(6)
        IF( Newton ) THEN
          CALL RadiationLinearSolver(RadiationSurfaces,G,SOL_d,RHS_d, &
                       Diag, Solver, Scaling=.FALSE.)
        END IF
+    print*,'const rad 9'; flush(6)
 
        ! Store the results for access by e.g. heat equation solvers:
        !------------------------------------------------------------
        CALL UpdateRadiosityFactors(SOL,SOL_d)
+    print*,'const rad 10'; flush(6)
      END SUBROUTINE ConstantRadiosity
        
      

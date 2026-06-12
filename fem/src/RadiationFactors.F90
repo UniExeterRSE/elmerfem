@@ -213,8 +213,12 @@
      ALLOCATE(ActiveMe(0:ParEnv % PEs-1), ActiveTasks(0:ParEnv % PEs-1))
      ActiveMe = .FALSE.
      ActiveMe(ParEnv % myPE) = RadiationSurfaces > 0
-     CALL MPI_ALLREDUCE( ActiveMe, ActiveTasks, ParEnv % PEs, &
-        MPI_LOGICAL, MPI_LOR, ELMER_COMM_WORLD, i )
+     IF ( ParEnv % PEs>1 )THEN
+       CALL MPI_ALLREDUCE( ActiveMe, ActiveTasks, ParEnv % PEs, &
+          MPI_LOGICAL, MPI_LOR, ELMER_COMM_WORLD, i )
+     ELSE
+       ActiveTasks = ActiveMe
+     END IF
 
      IF ( RadiationSurfaces == 0 ) THEN
        IF( FirstTime ) THEN

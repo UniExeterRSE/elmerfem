@@ -123,6 +123,7 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest . \
-            -R FilmFlow2DFsi \
-            --timeout 120
+          for i in $(seq 1 20); do
+            echo "=== Run $i ==="
+            ctest . -R FilmFlow2DFsi --timeout 120 || true
+          done

@@ -2,10 +2,14 @@ name: ubuntu-parallel
 
 on:
   push:
+    branches-ignore:
+      - test
     paths-ignore:
       - '**.nix'
       - 'flake.lock'
   pull_request:
+    branches-ignore:
+      - test
     paths-ignore:
       - '**.nix'
       - 'flake.lock'

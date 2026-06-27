@@ -1,7 +1,11 @@
 name: "nix flake check"
 on:
   pull_request:
+    branches-ignore:
+      - test
   push:
+    branches-ignore:
+      - test
 
 jobs:
   tests:

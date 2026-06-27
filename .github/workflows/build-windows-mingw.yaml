@@ -121,7 +121,7 @@ jobs:
         timeout-minutes: 30
         env:
           CTEST_OUTPUT_ON_FAILURE: 1
-          OMP_NUM_THREADS: 1
+          OMP_NUM_THREADS: 3
         run: |
           cd ${GITHUB_WORKSPACE}/build
           for i in $(seq 1 20); do

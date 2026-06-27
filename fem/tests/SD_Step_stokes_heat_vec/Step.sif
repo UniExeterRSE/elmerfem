@@ -76,7 +76,7 @@ Solver 2
   Linear System Max Iterations = 500
   Linear System Iterative Method = BiCGStabL
 
-  Element = p:1 b:4
+  Element = p:1 b:3
   Bubbles in Global System = False
 
   Linear System Convergence Tolerance = 1.0e-8

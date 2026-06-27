@@ -61,8 +61,8 @@ Solver 1
   Nonlinear System Max Iterations = 1
 
   Stokes Flow = Logical True
-  GradP Discretization = Logical False
   Div-Curl Form = Logical False
+  GradP Discretization = Logical False
 End
 
 
@@ -73,10 +73,10 @@ Solver 2
   Variable = "Temperature"
 
   Linear System Solver = Iterative
-  Linear System Iterative Method = BiCGStabL
   Linear System Max Iterations = 500
+  Linear System Iterative Method = BiCGStabL
 
-  Element = p:1 b:3
+  Element = p:1 b:4
   Bubbles in Global System = False
 
   Linear System Convergence Tolerance = 1.0e-8

@@ -128,7 +128,7 @@ Solver 2
   Nonlinear System Relaxation Factor = $erelax
 
   Linear System Solver = Direct 
-  Linear System Direct Method = umfpack
+  Linear System Direct Method = mumps
 
   Steady State Convergence Tolerance = 1.0e-4
 

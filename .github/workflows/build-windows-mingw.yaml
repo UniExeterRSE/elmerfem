@@ -125,5 +125,5 @@ jobs:
           cd ${GITHUB_WORKSPACE}/build
           for i in $(seq 1 20); do
             echo "=== Run $i ==="
-            ctest . -R FilmFlow2DFsi --timeout 120 || true
+            ctest . -R "FilmFlow2DFsi|SD_Step_stokes_heat_vec" --timeout 120 || true
           done

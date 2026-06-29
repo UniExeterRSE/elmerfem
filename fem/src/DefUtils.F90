@@ -2384,12 +2384,27 @@ CONTAINS
      END IF
 
      n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
-     
-     IF ( .NOT. ASSOCIATED( ElementNodes % x ) ) THEN
-       ALLOCATE( ElementNodes % x(n), ElementNodes % y(n),ElementNodes % z(n) )
-     ELSE IF ( SIZE(ElementNodes % x)<n ) THEN
-       DEALLOCATE(ElementNodes % x, ElementNodes % y, ElementNodes % z)
-       ALLOCATE( ElementNodes % x(n), ElementNodes % y(n),ElementNodes % z(n) )
+
+     IF ( .NOT. ALLOCATED( ElementNodes % xyz ) ) THEN
+       IF (ASSOCIATED(ElementNodes % x)) DEALLOCATE(ElementNodes % x)
+       IF (ASSOCIATED(ElementNodes % y)) DEALLOCATE(ElementNodes % y)
+       IF (ASSOCIATED(ElementNodes % z)) DEALLOCATE(ElementNodes % z)
+       ALLOCATE( ElementNodes % xyz(n,3) )
+       ElementNodes % xyz = 0.0_dp
+       ElementNodes % x => ElementNodes % xyz(1:n,1)
+       ElementNodes % y => ElementNodes % xyz(1:n,2)
+       ElementNodes % z => ElementNodes % xyz(1:n,3)
+     ELSE IF ( SIZE(ElementNodes % xyz, 1) < n ) THEN
+       DEALLOCATE( ElementNodes % xyz )
+       ALLOCATE( ElementNodes % xyz(n,3) )
+       ElementNodes % xyz = 0.0_dp
+       ElementNodes % x => ElementNodes % xyz(1:n,1)
+       ElementNodes % y => ElementNodes % xyz(1:n,2)
+       ElementNodes % z => ElementNodes % xyz(1:n,3)
+     ELSE
+       ElementNodes % x => ElementNodes % xyz(1:n,1)
+       ElementNodes % y => ElementNodes % xyz(1:n,2)
+       ElementNodes % z => ElementNodes % xyz(1:n,3)
      END IF
 
      n = Element % TYPE % NumberOfNodes

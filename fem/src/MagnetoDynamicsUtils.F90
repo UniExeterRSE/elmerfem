@@ -38,7 +38,7 @@
                    CoilBody,CoilType) RESULT (Tcoef)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), SAVE, POINTER :: Cwrk(:,:,:) => NULL()
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => NULL()
     TYPE(Element_t), TARGET :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
@@ -47,7 +47,6 @@
     CHARACTER(LEN=2) :: Part
     LOGICAL :: Found
     LOGICAL :: CoilBody
-!$OMP THREADPRIVATE(Cwrk)
 
     Tcoef=0._dp
     Material => GetMaterial( Element )
@@ -130,14 +129,13 @@
                   RESULT (mu)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), SAVE, POINTER :: Cwrk(:,:,:) => NULL()
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => NULL()
     TYPE(Element_t), TARGET :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
     REAL(KIND=dp) :: mu(3,3,n)
     CHARACTER(LEN=2) :: Part
     LOGICAL :: Found
-!$OMP THREADPRIVATE(Cwrk)
 
     mu=0._dp
     Material => GetMaterial( Element )
@@ -184,13 +182,12 @@
     IMPLICIT NONE
     REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => NULL()
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: n, i, j, slen, tsize 
+    INTEGER :: n, i, j, slen, tsize
     TYPE(Valuelist_t), POINTER :: Material
     REAL(KIND=dp) :: T(tsize,tsize,n)
     CHARACTER(LEN=2) :: Part
     CHARACTER(LEN=*) :: varname
     LOGICAL, OPTIONAL :: Found
-!$OMP THREADPRIVATE(Cwrk)
 
     IF (.NOT. ASSOCIATED(Element)) CALL Fatal ('GetTensor', 'Element not associated')
     T=0._dp
@@ -357,13 +354,13 @@
    REAL(KIND=dp) :: RotM(3,3,n)
    INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
    INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-   TYPE(Variable_t), POINTER, SAVE :: RotMvar !, alphavecvar 
+   TYPE(Variable_t), POINTER, SAVE :: RotMvar !, alphavecvar
    REAL(KIND=dp), POINTER, SAVE :: ConstArray(:,:)
    REAL(KIND=dp) :: Origin(3), alpha_ref(3), beta_ref(3)
    REAL(KIND=dp) :: x(3), r(3), xref(3)
    REAL(KIND=dp) :: C, S, t
    LOGICAL, SAVE :: visited = .FALSE.
-   TYPE(Nodes_t), SAVE :: Nodes
+   TYPE(Nodes_t) :: Nodes
 
    LOGICAL :: GotIt
 

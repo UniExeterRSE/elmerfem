@@ -771,7 +771,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: CompParams
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
     REAL(KIND=dp) :: MASS(nd,nd), DAMP(nd,nd), STIFF(nd,nd), FORCE(nd), &
@@ -785,7 +785,7 @@ CONTAINS
 
     INTEGER :: i,p,q,t
 
-    LOGICAL :: CoilBody, StrandedCoil    
+    LOGICAL :: CoilBody, StrandedCoil
     LOGICAL :: HBcurve, WithVelocity, WithAngularVelocity, Found, Stat
 
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
@@ -796,8 +796,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: hystvar
     TYPE(GlobalHysteresisModel_t), pointer :: zirkamodel
 
-!$omp threadprivate(Nodes)
-    
+
 !------------------------------------------------------------------------------
 
     IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
@@ -1065,13 +1064,13 @@ CONTAINS
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), POINTER, SAVE :: Basis(:), dBasisdx(:,:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), DAMP(:,:), STIFF(:,:), FORCE(:), POT(:)    
+    REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), DAMP(:,:), STIFF(:,:), FORCE(:), POT(:)
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp) :: Nu0, Nu, weight, SourceAtIp, CondAtIp, DetJ, Mu, MuDer, Babs
     LOGICAL :: Stat,Found, HBCurve, HasReluctivityFunction
     INTEGER :: t,p,q,k,m,allocstat, nudim
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(ValueList_t), POINTER :: Material, PrevMaterial => NULL()
     REAL(KIND=dp) :: B_ip(2), Ht(nd,2), Bt(nd,2), Agrad(2), JAC(nd,nd), Alocal, &
             Permittivity(nd), P_ip, A_t_der(2,2), nu_tensor(2,2)
@@ -1081,13 +1080,12 @@ CONTAINS
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, PermCoeff_h, &
         RelPermCoeff_h, RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, nu_h
     INTEGER :: PrevElemInd = HUGE(PrevElemInd)
-    
+
     SAVE HBCurve, Nu0, PrevMaterial, PrevElemInd, HasReluctivityFunction
-    
-    !$omp threadprivate(Basis, dBasisdx, MASS, DAMP, STIFF, FORCE, POT, &
-    !$omp               Nodes, Nu0, HBCurve, HasReluctivityFunction,PrevMaterial, &
-    !$omp               SourceCoeff_h, CondCoeff_h, PermCoeff_h,nu_h, RelPermCoeff_h, &
-    !$omp               RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, PrevElemInd )
+
+    !$omp threadprivate(Nu0, HBCurve, HasReluctivityFunction, PrevMaterial, &
+    !$omp               SourceCoeff_h, CondCoeff_h, PermCoeff_h, nu_h, RelPermCoeff_h, &
+    !$omp               RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, PrevElemInd)
     
 !------------------------------------------------------------------------------
 
@@ -1113,16 +1111,14 @@ CONTAINS
     END IF
     PrevElemInd = Element % ElementIndex
     
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(MASS)) THEN
-      m = Mesh % MaxElementDofs
-      ALLOCATE(MASS(m,m), DAMP(m,m), STIFF(m,m),FORCE(m), POT(m), STAT=allocstat)      
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
-      IF(.NOT. BasisFunctionsInUse ) THEN
-        ALLOCATE(Basis(m), dBasisdx(m,3))
-      END IF
+    ! Allocate local storage
+    m = Mesh % MaxElementDofs
+    ALLOCATE(MASS(m,m), DAMP(m,m), STIFF(m,m), FORCE(m), POT(m), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
+    END IF
+    IF(.NOT. BasisFunctionsInUse ) THEN
+      ALLOCATE(Basis(m), dBasisdx(m,3))
     END IF
     
     IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 20
@@ -1385,8 +1381,6 @@ END SUBROUTINE ! }}}
     TYPE(ValueList_t), POINTER :: Material
     TYPE(Element_t), POINTER :: Parent
     TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
-    !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
     STIFF = 0._dp
@@ -1447,11 +1441,10 @@ END SUBROUTINE ! }}}
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), &
             mu,AirGapLength(nd), AirGapMu(nd), SurfCurr(nd), AirGapL, SurfC, x
     TYPE(ValueList_t), POINTER :: BC
-    TYPE(Nodes_t), SAVE :: Nodes
-    !$OMP THREADPRIVATE(Nodes)
+    TYPE(Nodes_t) :: Nodes
 !------------------------------------------------------------------------------
 
-    GotAirGap = ListGetLogical( BC,'Air Gap', Found ) 
+    GotAirGap = ListGetLogical( BC,'Air Gap', Found )
     SurfCurr = GetReal( BC, 'Surface Current', GotSurfCurr )
 
     IF(.NOT. (GotAirGap .OR. GotSurfCurr)) RETURN
@@ -1558,18 +1551,13 @@ END SUBROUTINE ! }}}
     REAL(KIND=dp) :: Acoef(2,2,n)
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), SAVE :: Avacuum
     LOGICAL :: Found
-    LOGICAL, SAVE :: FirstTime = .TRUE.
-    !$OMP THREADPRIVATE(Avacuum, FirstTime)
+    REAL(KIND=dp) :: Avacuum
 !------------------------------------------------------------------------------
 
-    IF ( FirstTime ) THEN
-      Avacuum = GetConstReal( CurrentModel % Constants, &
-              'Permeability of Vacuum', Found )
-      IF(.NOT. Found ) Avacuum = PI * 4.0d-7
-      FirstTime = .FALSE.
-    END IF
+    Avacuum = GetConstReal( CurrentModel % Constants, &
+            'Permeability of Vacuum', Found )
+    IF(.NOT. Found ) Avacuum = PI * 4.0d-7
 
     Acoef = GetTensor(Element, n, 2, 'Relative Permeability', 're', Found)
 
@@ -2156,7 +2144,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: Material,  BodyForce
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(ValueList_t), POINTER :: CompParams
 
     COMPLEX(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LoadAtIp,&
@@ -2184,10 +2172,8 @@ CONTAINS
     LOGICAL :: InPlaneProximity=.TRUE., WithVelocity, WithAngularVelocity
     LOGICAL :: FoundIm, StrandedCoil
     LOGICAL :: LondonEquations
-    
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
 
-    !$omp threadprivate(Nodes,InPlaneProximity)
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,Element )
     STIFF = 0._dp
@@ -2473,8 +2459,6 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Material
     TYPE(Element_t), POINTER :: Parent
     TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
-    !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
     STIFF = 0._dp
@@ -2537,11 +2521,9 @@ CONTAINS
         SurfCurrIm(nd), AirGapL
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
-    !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
 
-    GotAirGap = GetLogical( BC,'Air Gap', Found ) 
+    GotAirGap = GetLogical( BC,'Air Gap', Found )
     SurfCurr = GetReal( BC, 'Surface Current', GotSurfCurr )
     SurfCurrIm = GetReal( BC, 'Surface Current Im', Found )
     GotSurfCurr = GotSurfCurr .OR. Found
@@ -2606,8 +2588,6 @@ CONTAINS
     COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd), imu, invZs, delta
     REAL(KIND=dp) :: SkinCond(nd), Mu(nd), CondAtIp, MuAtIp, MuVacuum
     TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
-    !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
     STIFF = 0._dp
@@ -2719,17 +2699,11 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     LOGICAL :: Found
-    REAL(KIND=dp), SAVE :: Avacuum
-    LOGICAL, SAVE :: FirstTime = .TRUE.
+    REAL(KIND=dp) :: Avacuum
 
-    !$OMP THREADPRIVATE(FirstTime, Avacuum)
-
-    IF ( FirstTime ) THEN
-      Avacuum = GetConstReal( CurrentModel % Constants, &
-              'Permeability of Vacuum', Found )
-      IF(.NOT. Found ) Avacuum = PI * 4.0d-7
-      FirstTime = .FALSE.
-    END IF
+    Avacuum = GetConstReal( CurrentModel % Constants, &
+            'Permeability of Vacuum', Found )
+    IF(.NOT. Found ) Avacuum = PI * 4.0d-7
 
     Acoef = GetCMPLXTensor(Element, n, 2, 'Relative Permeability', Found)
     

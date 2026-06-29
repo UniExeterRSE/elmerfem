@@ -408,20 +408,18 @@ CONTAINS
     LOGICAL, INTENT(IN) :: VecAsm
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), FORCE(:)
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
     REAL(KIND=dp), SAVE, POINTER  :: EpsAtIpVec(:), SourceAtIpVec(:)
     REAL(KIND=dp) :: eps0
     LOGICAL :: Stat,Found
     INTEGER :: i,t,p,q,dim,ngp,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, EpsCoeff_h
     SAVE Eps0
-    
-    !$OMP THREADPRIVATE(Basis, dBasisdx, DetJVec, &
-    !$OMP               STIFF, FORCE, Nodes, &
-    !$OMP               SourceCoeff_h, EpsCoeff_h, &
+
+    !$OMP THREADPRIVATE(SourceCoeff_h, EpsCoeff_h, &
     !$OMP               SourceAtIpVec, EpsAtIpVec )
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
     !DIR$ ATTRIBUTES ALIGN:64 :: STIFF, FORCE
@@ -449,19 +447,10 @@ CONTAINS
       
     ngp = IP % n
 
-    ! Deallocate storage if needed
-    IF (ALLOCATED(Basis)) THEN
-      IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) &
-            DEALLOCATE(Basis, dBasisdx, DetJVec, STIFF, FORCE )
-    END IF
-
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
-          STIFF(nd,nd), FORCE(nd), STAT=allocstat)      
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
+    ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
+        STIFF(nd,nd), FORCE(nd), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     CALL GetElementNodesVec( Nodes, UElement=Element )
@@ -633,8 +622,8 @@ CONTAINS
     TYPE(ValueHandle_t), SAVE :: Flux_h, Farfield_h, Infty_h, &
         LayerEps_h, LayerH_h, LayerRho_h, LayerV_h
     REAL(KIND=dp) :: LayerEps, LayerV, LayerRho, LayerH    
-    SAVE Nodes, Eps0
-    !$OMP THREADPRIVATE(Nodes,Flux_h,Farfield_h)
+    SAVE Eps0
+    !$OMP THREADPRIVATE(Flux_h,Farfield_h)
 !------------------------------------------------------------------------------
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN

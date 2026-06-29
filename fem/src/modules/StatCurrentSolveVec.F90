@@ -353,22 +353,19 @@ CONTAINS
     LOGICAL, INTENT(IN) :: VecAsm
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:)
     REAL(KIND=dp), SAVE, POINTER  :: CondAtIpVec(:), EpsAtIpVec(:), SourceAtIpVec(:)
     REAL(KIND=dp) :: eps0, weight
     LOGICAL :: Stat,Found, Pref
     INTEGER :: i,t,p,q,dim,ngp,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, EpsCoeff_h
     SAVE Eps0
-    
-    !$OMP THREADPRIVATE(Basis, dBasisdx, Eps0, DetJVec, &
-    !$OMP               MASS, STIFF, FORCE, Nodes, &
-    !$OMP               SourceCoeff_h, CondCoeff_h, EpsCoeff_h, &
-    !$OMP               SourceAtIpVec, CondAtIpVec, EpsAtIpVec )
+
+    !$OMP THREADPRIVATE(Eps0, SourceCoeff_h, CondCoeff_h, EpsCoeff_h)
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
     !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE
 !------------------------------------------------------------------------------
@@ -396,20 +393,10 @@ CONTAINS
       
     ngp = IP % n
 
-    ! Deallocate storage if needed
-    IF (ALLOCATED(Basis)) THEN
-      IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) &
-            DEALLOCATE(Basis, dBasisdx, DetJVec, MASS, STIFF, FORCE )
-    END IF
-
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
-          MASS(nd,nd), STIFF(nd,nd), FORCE(nd), STAT=allocstat)
-      
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
+    ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
+        MASS(nd,nd), STIFF(nd,nd), FORCE(nd), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     CALL GetElementNodesVec( Nodes, UElement=Element )
@@ -469,23 +456,21 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:)
     REAL(KIND=dp) :: eps0, weight
     REAL(KIND=dp) :: SourceAtIp, EpsAtIp, CondAtIp, DetJ, A
     REAL(KIND=dp), POINTER :: CondTensor(:,:)
     LOGICAL :: Stat,Found
     INTEGER :: i,j,t,p,q,dim,m,allocstat,CondRank
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, EpsCoeff_h
 
     SAVE Eps0
 !------------------------------------------------------------------------------
 
-    !$OMP THREADPRIVATE(Basis, dBasisdx, Eps0, &
-    !$OMP               MASS, STIFF, FORCE, Nodes, &
-    !$OMP               SourceCoeff_h, CondCoeff_h, EpsCoeff_h )
+    !$OMP THREADPRIVATE(Eps0, SourceCoeff_h, CondCoeff_h, EpsCoeff_h)
     
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
@@ -508,15 +493,11 @@ CONTAINS
       IP = GaussPoints( Element )
     END IF
       
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      m = Mesh % MaxElementDofs
-      ALLOCATE(Basis(m), dBasisdx(m,3),&
-          MASS(m,m), STIFF(m,m), FORCE(m), STAT=allocstat)
-      
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
+    m = Mesh % MaxElementDofs
+    ALLOCATE(Basis(m), dBasisdx(m,3), &
+        MASS(m,m), STIFF(m,m), FORCE(m), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     CALL GetElementNodes( Nodes, UElement=Element )
@@ -607,8 +588,7 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     TYPE(ValueHandle_t), SAVE :: Flux_h, Robin_h, Ext_h, Farfield_h
 
-    SAVE Nodes
-    !$OMP THREADPRIVATE(Nodes,Flux_h,Robin_h,Ext_h,Farfield_h)
+    !$OMP THREADPRIVATE(Flux_h,Robin_h,Ext_h,Farfield_h)
 !------------------------------------------------------------------------------
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
@@ -868,20 +848,19 @@ CONTAINS
     LOGICAL, INTENT(INOUT) :: InitHandles
     REAL(KIND=dp) :: MASS(:,:), FORCE(:,:)
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:),dBasisdx(:,:),ElementPot(:)
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),ElementPot(:)
     REAL(KIND=dp) :: eps0, weight
     REAL(KIND=dp) :: SourceAtIp, EpsAtIp, CondAtIp, DetJ
     REAL(KIND=dp) :: Grad(3), CondGrad(3), Heat
     LOGICAL :: Stat,Found
     INTEGER :: i,j,t,p,q,dim,m,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 
     TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, EpsCoeff_h
     SAVE Eps0
-    
-    !$OMP THREADPRIVATE(Basis, dBasisdx, Eps0, ElementPot, &
-    !$OMP               Nodes,SourceCoeff_h, CondCoeff_h, EpsCoeff_h)
+
+    !$OMP THREADPRIVATE(Eps0, SourceCoeff_h, CondCoeff_h, EpsCoeff_h)
 
     
 !------------------------------------------------------------------------------
@@ -900,13 +879,10 @@ CONTAINS
 
     dim = CoordinateSystemDimension()
 
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      m = Mesh % MaxElementDOFs   
-      ALLOCATE(Basis(m), dBasisdx(m,3), ElementPot(m), STAT=allocstat)      
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
+    m = Mesh % MaxElementDOFs
+    ALLOCATE(Basis(m), dBasisdx(m,3), ElementPot(m), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     CALL GetElementNodes( Nodes, UElement=Element )

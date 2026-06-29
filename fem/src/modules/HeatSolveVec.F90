@@ -584,27 +584,23 @@ CONTAINS
     LOGICAL, INTENT(IN) :: VecAsm
     LOGICAL, INTENT(INOUT) :: InitHandles
 !------------------------------------------------------------------------------
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:,:),dBasisdx(:,:,:), DetJVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:)
 
-    REAL(KIND=dp), SAVE, POINTER  :: CondAtIpVec(:), CpAtIpVec(:), TmpVec(:), &
+    REAL(KIND=dp), POINTER  :: CondAtIpVec(:), CpAtIpVec(:), TmpVec(:), &
         SourceAtIpVec(:), RhoAtIpVec(:),VeloAtIpVec(:,:),ConvVelo(:,:),ConvVelo_i(:)
 
     LOGICAL :: Stat,Found,ConvComp,ConvConst
     INTEGER :: i,ngp,allocstat
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(ValueHandle_t), SAVE :: Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
         ConvVelo_h(3), PerfRate_h, PerfDens_h, PerfCp_h, &
         PerfRefTemp_h, VolSource_h, OrigMesh_h
     TYPE(VariableHandle_t), SAVE :: ConvField_h
-    
-    
-    !$OMP THREADPRIVATE(Basis, dBasisdx, DetJVec, &
-    !$OMP               MASS, STIFF, FORCE, Nodes, ConvVelo, VeloAtIpVec, &
-    !$OMP               ConvVelo_i, RhoAtIpVec, SourceAtIpVec, TmpVec, CPAtIpVec, CondAtIpVec, &
-    !$OMP               Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
+
+    !$OMP THREADPRIVATE(Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
     !$OMP               ConvVelo_h, PerfRate_h, PerfDens_h, PerfCp_h, &
     !$OMP               PerfRefTemp_h, ConvField_h, VolSource_h, OrigMesh_h)
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
@@ -655,21 +651,11 @@ CONTAINS
       CALL Info(Caller,'Number of 1st integration points: '//I2S(IP % n), Level=10)
     END IF
         
-    ! Deallocate storage if needed
-    IF (ALLOCATED(Basis)) THEN
-      IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) &
-          DEALLOCATE(Basis, dBasisdx, DetJVec, MASS, STIFF, FORCE, &
-          TmpVec, ConvVelo )
-    END IF
-    
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-      ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
-          MASS(nd,nd), STIFF(nd,nd), FORCE(nd), ConvVelo(ngp,3), &
-          TmpVec(ngp), STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal(Caller,'Local storage allocation failed')
-      END IF
+    ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
+        MASS(nd,nd), STIFF(nd,nd), FORCE(nd), ConvVelo(ngp,3), &
+        TmpVec(ngp), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+      CALL Fatal(Caller,'Local storage allocation failed')
     END IF
 
     IF( ListGetElementLogical( OrigMesh_h ) ) THEN      
@@ -827,7 +813,7 @@ CONTAINS
     INTEGER :: i,j,t,p,q,CondRank
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
 
     TYPE(ValueHandle_t), SAVE :: Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
         ConvVelo_h, PlateSpeed_h, PerfRate_h, PerfDens_h, PerfCp_h, PerfRefTemp_h, &
@@ -836,7 +822,7 @@ CONTAINS
     TYPE(VariableHandle_t), SAVE :: ConvField_h
 
 !$OMP  THREADPRIVATE(Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, ConvVelo_h, PlateSpeed_h, PerfRate_h, &
-!$OMP& PerfDens_h, PerfCp_h, PerfRefTemp_h, VolSource_h, OrigMesh_h, ConvField_h, Nodes )
+!$OMP& PerfDens_h, PerfCp_h, PerfRefTemp_h, VolSource_h, OrigMesh_h, ConvField_h)
 
 !------------------------------------------------------------------------------
 
@@ -1060,11 +1046,11 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
 
-    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(Nodes_t) :: Nodes
     TYPE(ValueHandle_t), SAVE :: HeatFlux_h, HeatTrans_h, ExtTemp_h, Farfield_h, &
-        RadFlag_h, RadExtTemp_h, EmisBC_h, EmisMat_h, TorBC_h 
+        RadFlag_h, RadExtTemp_h, EmisBC_h, EmisMat_h, TorBC_h
 
-    !$OMP  THREADPRIVATE(Nodes,HeatFlux_h,HeatTrans_h,ExtTemp_h,Farfield_h,RadFlag_h, &
+    !$OMP  THREADPRIVATE(HeatFlux_h,HeatTrans_h,ExtTemp_h,Farfield_h,RadFlag_h, &
     !$OMP& RadExtTemp_h, EmisBC_h, EmisMat_h, TorBC_h )
 !------------------------------------------------------------------------------
     BC => GetBC(Element)
@@ -1350,9 +1336,6 @@ CONTAINS
     REAL(KIND=dp) :: NodalTemp(12)
     INTEGER, TARGET :: ElemInds(12),ElemInds2(12)
     
-    SAVE Nodes
-
-!$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
     IF(Element % PartIndex /= ParEnv % myPE ) RETURN
     

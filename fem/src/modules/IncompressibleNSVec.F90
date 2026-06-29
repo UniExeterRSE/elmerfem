@@ -543,13 +543,11 @@ CONTAINS
       REAL(KIND=dp), SAVE :: R, NewtonRelax
       REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond
       LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE., GotRelax = .FALSE.
-      REAL(KIND=dp), ALLOCATABLE, SAVE :: ss(:), s(:), ArrheniusFactorVec(:)
-      REAL(KIND=dp), POINTER, SAVE :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:) 
+      REAL(KIND=dp), ALLOCATABLE :: ss(:), s(:), ArrheniusFactorVec(:)
+      REAL(KIND=dp), POINTER :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:)
       TYPE(Variable_t), POINTER, SAVE :: ShearVar, ViscVar, WeightVar
       LOGICAL, SAVE :: SaveShear, SaveVisc, SaveWeight
       CHARACTER(*), PARAMETER :: Caller = 'EffectiveViscosityVec'
-     
-!$OMP THREADPRIVATE(ss,s,ViscVec0,ViscVec,ArrheniusFactorVec,TempVec,EhfVec)
      
       IF(InitHandles ) THEN
         CALL Info(Caller,'Initializing handles for viscosity models',Level=8)
@@ -676,18 +674,7 @@ CONTAINS
         RETURN      
       END IF
         
-      ! Deallocate too small storage if needed 
-      IF (ALLOCATED(ss)) THEN
-        IF (SIZE(ss) < ngp ) DEALLOCATE(ss, s, ViscVec, ArrheniusFactorVec )
-      END IF
-
-      ! Allocate storage if needed
-      IF (.NOT. ALLOCATED(ss)) THEN
-        ALLOCATE(ss(ngp),s(ngp),ViscVec(ngp),ArrheniusFactorVec(ngp),STAT=allocstat)
-        IF (allocstat /= 0) THEN
-          CALL Fatal(Caller,'Local storage allocation failed')
-        END IF
-      END IF
+      ALLOCATE(ss(ngp), s(ngp), ViscVec(ngp), ArrheniusFactorVec(ngp))
 
       ! For non-newtonian models compute the viscosity here
       EffViscVec => ViscVec

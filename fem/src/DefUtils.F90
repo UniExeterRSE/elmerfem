@@ -2363,7 +2363,7 @@ CONTAINS
 
 !> Returns the nodal coordinate values in the active element
   SUBROUTINE GetElementNodes( ElementNodes, UElement, USolver, UMesh )
-     TYPE(Nodes_t) :: ElementNodes
+     TYPE(Nodes_t), TARGET :: ElementNodes
      TYPE(Solver_t), OPTIONAL, TARGET :: USolver
      TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
      TYPE(Element_t), OPTIONAL, TARGET :: UElement

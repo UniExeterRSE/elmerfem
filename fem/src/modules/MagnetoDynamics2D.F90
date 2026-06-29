@@ -1065,7 +1065,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), DAMP(:,:), STIFF(:,:), FORCE(:), POT(:)
-    REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
+    REAL(KIND=dp), POINTER :: Basis(:) => NULL(), dBasisdx(:,:) => NULL()
     REAL(KIND=dp) :: Nu0, Nu, weight, SourceAtIp, CondAtIp, DetJ, Mu, MuDer, Babs
     LOGICAL :: Stat,Found, HBCurve, HasReluctivityFunction
     INTEGER :: t,p,q,k,m,allocstat, nudim
@@ -1320,6 +1320,7 @@ CONTAINS
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     
 20  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element) !, VecAssembly=VecAsm)
+    IF( .NOT. BasisFunctionsInUse .AND. ASSOCIATED(Basis) ) DEALLOCATE(Basis, dBasisdx)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixHandles
 !------------------------------------------------------------------------------

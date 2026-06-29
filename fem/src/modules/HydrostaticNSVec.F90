@@ -488,7 +488,6 @@ CONTAINS
 
     TYPE(ValueHandle_t), SAVE :: Dens_h, Load_h(3)
     TYPE(Variable_t), POINTER, SAVE :: HeightVar
-    TYPE(Nodes_t) :: Nodes
 
 !DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec, rhoVec, loadAtIpVec
 !DIR$ ATTRIBUTES ALIGN:64 :: STIFF, FORCE, weight_1, weight_2, weight_4
@@ -995,7 +994,6 @@ CONTAINS
         vgrad(2), w, velo(2), zgrad(2)
     REAL(KIND=dp), ALLOCATABLE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:)
     INTEGER :: t, i, j, k, ngp, allocstat
-    TYPE(Nodes_t) :: Nodes
 
 !DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec
 !------------------------------------------------------------------------------

@@ -674,10 +674,10 @@ END SUBROUTINE InterpolateMeshToMesh
        REAL(KIND=dp), POINTER CONTIG :: Values(:) 
        REAL(KIND=dp), POINTER :: LocalU(:), LocalV(:), LocalW(:)
 
-       TYPE(Nodes_t), SAVE :: Nodes
+       TYPE(Nodes_t) :: Nodes
        INTEGER, ALLOCATABLE :: OneDGIndex(:)
-              
-       !$OMP THREADPRIVATE(eps1,Nodes)
+
+       !$OMP THREADPRIVATE(eps1)
 
 !------------------------------------------------------------------------------
 

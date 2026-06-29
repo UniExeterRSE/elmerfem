@@ -74,7 +74,7 @@ CONTAINS
     REAL(KIND=dp) :: PrevNodalSol(dim+1,ntot)
     REAL(KIND=dp) :: s, rho
 
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:), &
+    REAL(KIND=dp), ALLOCATABLE :: BasisVec(:,:), dBasisdxVec(:,:,:), DetJVec(:), &
         rhoVec(:), VeloPresVec(:,:), loadAtIpVec(:,:), VelocityMass(:,:), &
         PressureMass(:,:), ForcePart(:), &
         weight_a(:), weight_b(:), weight_c(:), tauVec(:), PrevTempVec(:), PrevPressureVec(:), &
@@ -84,19 +84,13 @@ CONTAINS
     REAL(kind=dp) :: stifford(ntot,ntot,dim+1,dim+1), jacord(ntot,ntot,dim+1,dim+1), &
         JAC(ntot*(dim+1),ntot*(dim+1) )
 
-    INTEGER :: t, i, j, k, p, q, ngp, allocstat
-    INTEGER, SAVE :: elemdim
+    INTEGER :: t, i, j, k, p, q, ngp, allocstat, elemdim
     INTEGER :: DOFs
 
     TYPE(ValueHandle_t), SAVE :: Dens_h, Load_h(3)
-    
+
 !DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec, rhoVec, VeloPresVec, loadAtIpVec
 !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE, weight_a, weight_b, weight_c
-!$OMP THREADPRIVATE(BasisVec, dBasisdxVec, DetJVec, rhoVec, VeloPresVec, loadAtIpVec, ElemDim )
-!$OMP THREADPRIVATE(VelocityMass, PressureMass, ForcePart, Weight_a, weight_b, weight_c)
-!$OMP THREADPRIVATE(tauVec, PrevTempVec, PrevPressureVec, VeloVec, PresVec, GradVec, Nodes)
-
-    SAVE Nodes
 !------------------------------------------------------------------------------
 
     CALL GetElementNodesVec( Nodes )
@@ -119,39 +113,13 @@ CONTAINS
     ! Storage size depending ngp
     !-------------------------------------------------------------------------------
 
-    ! Deallocate storage if needed 
-    IF (ALLOCATED(BasisVec)) THEN
-      IF (SIZE(BasisVec,1) < ngp .OR. SIZE(BasisVec,2) < ntot) &
-          DEALLOCATE(BasisVec,dBasisdxVec, DetJVec, rhoVec, VeloVec, PresVec, &
-          LoadAtIpVec, weight_a, weight_b, weight_c, tauVec, PrevTempVec, &
-          PrevPressureVec, VeloPresVec, GradVec)
-    END IF
-    
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(BasisVec)) THEN
-      ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), &
-          rhoVec(ngp), VeloVec(ngp, dim), PresVec(ngp), velopresvec(ngp,dofs), LoadAtIpVec(ngp,dim+1), &
-          weight_a(ngp), weight_b(ngp), weight_c(ngp), tauVec(ngp), PrevTempVec(ngp), &
-          PrevPressureVec(ngp), GradVec(ngp,dim,dim), &
-          STAT=allocstat)
-      IF (allocstat /= 0) THEN
-        CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
-      END IF
-    END IF
+    ALLOCATE(BasisVec(ngp,ntot), dBasisdxVec(ngp,ntot,3), DetJVec(ngp), &
+        rhoVec(ngp), VeloVec(ngp, dim), PresVec(ngp), velopresvec(ngp,dofs), LoadAtIpVec(ngp,dim+1), &
+        weight_a(ngp), weight_b(ngp), weight_c(ngp), tauVec(ngp), PrevTempVec(ngp), &
+        PrevPressureVec(ngp), GradVec(ngp,dim,dim), STAT=allocstat)
+    IF (allocstat /= 0) CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
 
-
-    ! Deallocate storage (ntot) if needed
-    IF (ALLOCATED(VelocityMass)) THEN
-      IF(SIZE(VelocityMass,1) < ntot ) THEN
-        DEALLOCATE(VelocityMass, PressureMass, ForcePart)
-      END IF
-    END IF
-
-    ! Allocate storage (ntot) if needed
-    IF(.NOT. ALLOCATED(VelocityMass)) THEN
-      ALLOCATE(VelocityMass(ntot,ntot), PressureMass(ntot, ntot), &
-          ForcePart(ntot))
-    END IF
+    ALLOCATE(VelocityMass(ntot,ntot), PressureMass(ntot, ntot), ForcePart(ntot))
            
     IF (Newton) THEN
       ALLOCATE(muDerVec0(ngp), g(ngp,ntot,dim), StrainRateVec(ngp,dim,dim))

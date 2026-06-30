@@ -2650,14 +2650,17 @@ CONTAINS
        CASE ( 2 ) ! line
          u = 0.0_dp
          v = 0.0_dp
+         w = 0.0_dp
 
        CASE ( 3 ) ! tri
          u = 0.5_dp
          v = 0.5_dp
+         w = 0.0_dp
          
        CASE ( 4 ) ! quad
          u = 0.0_dp
          v = 0.0_dp
+         w = 0.0_dp
 
        CASE ( 5 ) ! tet
          u = 0.5_dp

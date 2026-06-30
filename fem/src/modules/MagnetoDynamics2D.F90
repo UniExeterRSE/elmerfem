@@ -221,30 +221,38 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
     END IF
 
     tind = 0
-    !!omp parallel do private(Element,n,nd,nb,t)
-    DO t=1,active
-      Element => GetActiveElement(t)
-      n  = GetElementNOFNodes(Element)
-      nd = GetElementNOFDOFs(Element)
-      nb = GetElementNOFBDOFs(Element)
-
-      IF( SkipDegenerate .AND. DegenerateElement(Element) ) THEN
-        CALL Info(Caller,'Skipping degenerate element:'//I2S(t),Level=12)
-        CYCLE
-      END IF
-
-      IF( HandleAsm ) THEN
-        CALL LocalMatrixHandles(  Element, n, nd+nb, nb )
-      ELSE
+    IF ( HandleAsm ) THEN
+      DO t=1,active
+        Element => GetActiveElement(t)
+        n  = GetElementNOFNodes(Element)
+        nd = GetElementNOFDOFs(Element)
+        nb = GetElementNOFBDOFs(Element)
+        IF( SkipDegenerate .AND. DegenerateElement(Element) ) THEN
+          CALL Info(Caller,'Skipping degenerate element:'//I2S(t),Level=12)
+          CYCLE
+        END IF
+        CALL LocalMatrixHandles( Element, n, nd+nb, nb )
+      END DO
+    ELSE
+!$omp parallel do private(Element,n,nd,nb,t)
+      DO t=1,active
+        Element => GetActiveElement(t)
+        n  = GetElementNOFNodes(Element)
+        nd = GetElementNOFDOFs(Element)
+        nb = GetElementNOFBDOFs(Element)
+        IF( SkipDegenerate .AND. DegenerateElement(Element) ) THEN
+          CALL Info(Caller,'Skipping degenerate element:'//I2S(t),Level=12)
+          CYCLE
+        END IF
         CALL LocalMatrix(Element, n, nd)
-      END IF
-    END DO
-    !!omp end parallel do  
-      
+      END DO
+!$omp end parallel do
+    END IF
+
     CALL DefaultFinishBulkAssembly()
-    
+
     Active = GetNOFBoundaryElements()
-!!omp parallel do private(Element, n, nd, BC,Found, t)
+!$omp parallel do private(Element, n, nd, BC, Found, t)
     DO t=1,active
       Element => GetBoundaryElement(t)
       BC => GetBC( Element )
@@ -255,11 +263,11 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
 
       IF(GetLogical(BC,'Infinity BC',Found)) THEN
         CALL LocalMatrixInfinityBC(Element, n, nd)
-      ELSE 
+      ELSE
         CALL LocalMatrixBC(Element, BC, n, nd)
       END IF
     END DO
-!!omp end parallel do
+!$omp end parallel do
 
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()

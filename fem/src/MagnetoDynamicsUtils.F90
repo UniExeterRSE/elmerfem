@@ -38,7 +38,7 @@
                    CoilBody,CoilType) RESULT (Tcoef)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => NULL()
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), TARGET :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
@@ -48,10 +48,11 @@
     LOGICAL :: Found
     LOGICAL :: CoilBody
 
+    NULLIFY(Cwrk)
     Tcoef=0._dp
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
-      IF (Part=='re') THEN 
+      IF (Part=='re') THEN
         CALL ListGetRealArray( Material, &
              'Electric Conductivity', Cwrk, n, Element % NodeIndexes, Found )
       ELSE
@@ -82,8 +83,9 @@
         END IF
       END IF
     END IF
+    IF (ASSOCIATED(Cwrk)) DEALLOCATE(Cwrk)
 
-    IF (CoilBody) THEN 
+    IF (CoilBody) THEN
       SELECT CASE (CoilType)
       CASE ('stranded')
         !Tcoef(1,1,1:n) = 0._dp
@@ -92,7 +94,7 @@
         Tcoef(1,1,1:n) = 0._dp
       END SELECT
     END IF
- 
+
 !------------------------------------------------------------------------------
   END FUNCTION GetElectricConductivityTensor
 !------------------------------------------------------------------------------ 
@@ -129,7 +131,7 @@
                   RESULT (mu)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => NULL()
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), TARGET :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
@@ -137,10 +139,11 @@
     CHARACTER(LEN=2) :: Part
     LOGICAL :: Found
 
+    NULLIFY(Cwrk)
     mu=0._dp
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
-      IF (Part=='re') THEN 
+      IF (Part=='re') THEN
         CALL ListGetRealArray( Material, &
              'Relative Permeability', Cwrk, n, Element % NodeIndexes, Found )
       ELSE
@@ -171,6 +174,7 @@
         END IF
       END IF
     END IF
+    IF (ASSOCIATED(Cwrk)) DEALLOCATE(Cwrk)
 !------------------------------------------------------------------------------
   END FUNCTION GetPermeabilityTensor
 !------------------------------------------------------------------------------ 
@@ -180,7 +184,7 @@
                   RESULT (T)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => NULL()
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j, slen, tsize
     TYPE(Valuelist_t), POINTER :: Material
@@ -189,6 +193,7 @@
     CHARACTER(LEN=*) :: varname
     LOGICAL, OPTIONAL :: Found
 
+    NULLIFY(Cwrk)
     IF (.NOT. ASSOCIATED(Element)) CALL Fatal ('GetTensor', 'Element not associated')
     T=0._dp
     Material => GetMaterial( Element )
@@ -225,6 +230,7 @@
         END IF
       END IF
     END IF
+    IF (ASSOCIATED(Cwrk)) DEALLOCATE(Cwrk)
 !------------------------------------------------------------------------------
   END FUNCTION GetTensor
 !------------------------------------------------------------------------------ 

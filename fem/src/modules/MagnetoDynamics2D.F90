@@ -1065,7 +1065,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), DAMP(:,:), STIFF(:,:), FORCE(:), POT(:)
-    REAL(KIND=dp), POINTER :: Basis(:) => NULL(), dBasisdx(:,:) => NULL()
+    REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp) :: Nu0, Nu, weight, SourceAtIp, CondAtIp, DetJ, Mu, MuDer, Babs
     LOGICAL :: Stat,Found, HBCurve, HasReluctivityFunction
     INTEGER :: t,p,q,k,m,allocstat, nudim
@@ -1088,6 +1088,7 @@ CONTAINS
     !$omp               RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, PrevElemInd)
     
 !------------------------------------------------------------------------------
+    NULLIFY(Basis, dBasisdx)
 
     ! The elements should be in growing order. Hence we initialize if we start the list.
     IF( Element % ElementIndex < PrevElemInd ) THEN
@@ -2170,7 +2171,7 @@ CONTAINS
 
     LOGICAL :: HBcurve, Found, Stat, StrandedHomogenization
     LOGICAL :: CoilBody    
-    LOGICAL :: InPlaneProximity=.TRUE., WithVelocity, WithAngularVelocity
+    LOGICAL :: InPlaneProximity, WithVelocity, WithAngularVelocity
     LOGICAL :: FoundIm, StrandedCoil
     LOGICAL :: LondonEquations
 

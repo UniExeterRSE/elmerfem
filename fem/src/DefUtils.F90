@@ -2386,9 +2386,6 @@ CONTAINS
      n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
 
      IF ( .NOT. ALLOCATED( ElementNodes % xyz ) ) THEN
-       IF (ASSOCIATED(ElementNodes % x)) DEALLOCATE(ElementNodes % x)
-       IF (ASSOCIATED(ElementNodes % y)) DEALLOCATE(ElementNodes % y)
-       IF (ASSOCIATED(ElementNodes % z)) DEALLOCATE(ElementNodes % z)
        ALLOCATE( ElementNodes % xyz(n,3) )
        ElementNodes % xyz = 0.0_dp
        ElementNodes % x => ElementNodes % xyz(1:n,1)

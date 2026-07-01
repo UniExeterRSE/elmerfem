@@ -143,7 +143,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   
   LOGICAL :: NewtonRaphson = .FALSE., CSymmetry, SkipDegenerate, &
       HandleAsm, MassAsm, ConstantMassInUse = .FALSE.
-  LOGICAL :: SliceAverage
+  LOGICAL :: SliceAverage, HasZirka
   TYPE(Variable_t), POINTER :: CoordVar
 
   REAL(KIND=dp), ALLOCATABLE, SAVE :: MassValues(:)
@@ -204,6 +204,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
 
   SkipDegenerate = GetLogical(SolverParams, 'Skip Degenerate Elements',Found ) 
   
+  HasZirka = ListGetLogicalAnyMaterial(Model, 'Zirka material')
   CALL Info(Caller,'Initializing Zirka hysteresis models', Level=10)
   CALL InitHysteresis(Model, Solver)
 
@@ -234,7 +235,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
         CALL LocalMatrixHandles( Element, n, nd+nb, nb )
       END DO
     ELSE
-!$omp parallel do private(Element,n,nd,nb,t)
+!$omp parallel do private(Element,n,nd,nb,t) if(.NOT. HasZirka)
       DO t=1,active
         Element => GetActiveElement(t)
         n  = GetElementNOFNodes(Element)

@@ -1540,18 +1540,13 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
-     LOGICAL :: First = .TRUE., Dirichlet
+     LOGICAL :: Dirichlet
 
-     SAVE Hwrk, First
-     !$omp threadprivate(First, Hwrk)
 !------------------------------------------------------------------------------
 
 !    Initialize:
 !    -----------
-     IF ( First ) THEN
-        First = .FALSE.
-        NULLIFY( Hwrk )
-     END IF
+     NULLIFY( Hwrk )
 
      Gnorm     = 0.0_dp
 
@@ -1752,6 +1747,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
      DEALLOCATE( EdgeBasis, Basis, dBasisdx, Flux, x, y, z, &
              NodalPermittivity, Potential )
+     IF ( ASSOCIATED(Hwrk) ) DEALLOCATE( Hwrk )
 !------------------------------------------------------------------------------
    END SUBROUTINE StatElecSolver_Boundary_Residual
 !------------------------------------------------------------------------------
@@ -1793,19 +1789,11 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
-     LOGICAL :: First = .TRUE.
-
-     SAVE Hwrk, First
-     !$omp threadprivate(First, Hwrk)
 !------------------------------------------------------------------------------
 
 !    Initialize:
 !    -----------
-
-     IF ( First ) THEN
-        First = .FALSE.
-        NULLIFY( Hwrk )
-     END IF
+     NULLIFY( Hwrk )
 
      SELECT CASE( CurrentCoordinateSystem() )
         CASE( AxisSymmetric, CylindricSymmetric )
@@ -1970,6 +1958,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
      DEALLOCATE( x, y, z, NodalPermittivity, EdgeBasis, Basis, &
                 dBasisdx, Potential )
+     IF ( ASSOCIATED(Hwrk) ) DEALLOCATE( Hwrk )
 !------------------------------------------------------------------------------
    END SUBROUTINE StatElecSolver_Edge_Residual
 !------------------------------------------------------------------------------
@@ -2012,10 +2001,6 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
-     LOGICAL :: First = .TRUE.
-
-     SAVE Hwrk, First
-     !$omp threadprivate(First, Hwrk)
 !------------------------------------------------------------------------------
 
 !    Initialize:
@@ -2027,10 +2012,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !    -------------------------------------------
      IF ( ANY( Perm( Element % NodeIndexes ) <= 0 ) ) RETURN
 
-     IF ( First ) THEN
-        First = .FALSE.
-        NULLIFY( Hwrk )
-     END IF
+     NULLIFY( Hwrk )
 
      Metric = 0.0_dp
      DO i=1,3
@@ -2195,6 +2177,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
      DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, NodalPermittivity, &
         Basis, dBasisdx, ddBasisddx, PrevPot, NodalSource, Potential )
+     IF ( ASSOCIATED(Hwrk) ) DEALLOCATE( Hwrk )
 !------------------------------------------------------------------------------
    END SUBROUTINE StatElecSolver_Inside_Residual
 !------------------------------------------------------------------------------

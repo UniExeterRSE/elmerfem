@@ -185,6 +185,14 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   CHARACTER(LEN=MAX_NAME_LEN) :: EqName
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver'
 
+  ! Thread-local handle storage for LocalMatrixVec — indexed 1..nthr.
+  ! Replaces SAVE+THREADPRIVATE inside the subroutine; accessed via ASSOCIATE(tid).
+  TYPE(ValueHandle_t), ALLOCATABLE :: &
+      Source_h(:), Cond_h(:), Cp_h(:), Rho_h(:), ConvFlag_h(:), &
+      ConvVelo_h(:,:), PerfRate_h(:), PerfDens_h(:), PerfCp_h(:), &
+      PerfRefTemp_h(:), VolSource_h(:), OrigMesh_h(:)
+  TYPE(VariableHandle_t), ALLOCATABLE :: ConvField_h(:)
+
   INTERFACE
     SUBROUTINE HeatSolver_Boundary_Residual( Model,Edge,Mesh,Quant,Perm,Gnorm,Indicator)
       USE Types
@@ -255,6 +263,11 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   
   nthr = 1
   !$ nthr = omp_get_max_threads()
+
+  ALLOCATE( Source_h(nthr), Cond_h(nthr), Cp_h(nthr), Rho_h(nthr), &
+      ConvFlag_h(nthr), ConvVelo_h(3,nthr), PerfRate_h(nthr), &
+      PerfDens_h(nthr), PerfCp_h(nthr), PerfRefTemp_h(nthr), &
+      VolSource_h(nthr), OrigMesh_h(nthr), ConvField_h(nthr) )
 
   nColours = GetNOFColours(Solver)
 
@@ -591,21 +604,26 @@ CONTAINS
         SourceAtIpVec(:), RhoAtIpVec(:),VeloAtIpVec(:,:),ConvVelo(:,:),ConvVelo_i(:)
 
     LOGICAL :: Stat,Found,ConvComp,ConvConst
-    INTEGER :: i,ngp,allocstat
+    INTEGER :: i,ngp,allocstat,tid
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
-    TYPE(ValueHandle_t), SAVE :: Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
-        ConvVelo_h(3), PerfRate_h, PerfDens_h, PerfCp_h, &
-        PerfRefTemp_h, VolSource_h, OrigMesh_h
-    TYPE(VariableHandle_t), SAVE :: ConvField_h
-
-    !$OMP THREADPRIVATE(Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
-    !$OMP               ConvVelo_h, PerfRate_h, PerfDens_h, PerfCp_h, &
-    !$OMP               PerfRefTemp_h, ConvField_h, VolSource_h, OrigMesh_h)
+    ! Handles now live in parent scope as thread-indexed arrays; see ASSOCIATE below.
     !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJVec
     !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE
 !------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( &
+        Source_h      => Source_h(tid),     Cond_h        => Cond_h(tid),      &
+        Cp_h          => Cp_h(tid),         Rho_h         => Rho_h(tid),       &
+        ConvFlag_h    => ConvFlag_h(tid),   ConvVelo_h    => ConvVelo_h(:,tid), &
+        PerfRate_h    => PerfRate_h(tid),   PerfDens_h    => PerfDens_h(tid),   &
+        PerfCp_h      => PerfCp_h(tid),     PerfRefTemp_h => PerfRefTemp_h(tid),&
+        VolSource_h   => VolSource_h(tid),  OrigMesh_h    => OrigMesh_h(tid),   &
+        ConvField_h   => ConvField_h(tid) )
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
@@ -733,6 +751,8 @@ CONTAINS
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     
 10  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixVec
 !------------------------------------------------------------------------------

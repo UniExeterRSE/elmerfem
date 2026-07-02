@@ -110,9 +110,14 @@ MODULE DefUtils
      MODULE PROCEDURE GetScalarLocalConsmode, GetVectorLocalConsmode
    END INTERFACE
 
-   INTEGER, ALLOCATABLE, TARGET, PRIVATE :: IndexStore(:), VecIndexStore(:)
-   REAL(KIND=dp), ALLOCATABLE, TARGET, PRIVATE  :: ValueStore(:)
-   !$OMP THREADPRIVATE(IndexStore, VecIndexStore, ValueStore)
+   ! Per-thread scratch storage — NOT THREADPRIVATE; indexed by omp_get_thread_num()+1.
+   ! Avoids the GCC/emutls bug: ALLOCATABLE THREADPRIVATE vars are shared on Windows.
+   TYPE, PRIVATE :: DefUtils_Store_t
+     INTEGER, ALLOCATABLE :: istore(:)
+     INTEGER, ALLOCATABLE :: vistore(:)
+     REAL(KIND=dp), ALLOCATABLE :: vstore(:)
+   END TYPE DefUtils_Store_t
+   TYPE(DefUtils_Store_t), ALLOCATABLE, PRIVATE, TARGET :: Stores(:)
 
    TYPE(Element_t), POINTER :: CurrentElementThread => NULL()
    !$OMP THREADPRIVATE(CurrentElementThread)
@@ -171,58 +176,68 @@ CONTAINS
 #endif
    END FUNCTION GetCompilationDate
   
-  FUNCTION GetIndexStore() RESULT(ind)
-    IMPLICIT NONE
-    INTEGER, POINTER CONTIG :: ind(:)
-    INTEGER :: istat
-
-    IF ( .NOT. ALLOCATED(IndexStore) ) THEN
+  SUBROUTINE EnsureStores()
+    INTEGER :: nthr
+    IF (.NOT. ALLOCATED(Stores)) THEN
       !$OMP CRITICAL
-      IF ( .NOT. ALLOCATED(IndexStore) ) THEN
-        ALLOCATE( IndexStore(ISTORE_MAX_SIZE), STAT=istat )
-        IndexStore = 0
-        IF ( istat /= 0 ) CALL Fatal( 'GetIndexStore', 'Memory allocation error.' )
+      IF (.NOT. ALLOCATED(Stores)) THEN
+        nthr = 1
+        !$ nthr = OMP_GET_MAX_THREADS()
+        ALLOCATE(Stores(nthr))
       END IF
       !$OMP END CRITICAL
     END IF
-    ind => IndexStore
+  END SUBROUTINE EnsureStores
+
+  FUNCTION GetIndexStore() RESULT(ind)
+    IMPLICIT NONE
+    INTEGER, POINTER CONTIG :: ind(:)
+    INTEGER :: tid, istat
+
+    CALL EnsureStores()
+    tid = 1
+    !$ tid = OMP_GET_THREAD_NUM() + 1
+    IF (.NOT. ALLOCATED(Stores(tid)%istore)) THEN
+      ALLOCATE(Stores(tid)%istore(ISTORE_MAX_SIZE), STAT=istat)
+      Stores(tid)%istore = 0
+      IF (istat /= 0) CALL Fatal('GetIndexStore', 'Memory allocation error.')
+    END IF
+    ind => Stores(tid)%istore
   END FUNCTION GetIndexStore
 
   FUNCTION GetPermIndexStore() RESULT(ind)
     IMPLICIT NONE
     INTEGER, POINTER CONTIG :: ind(:)
-    INTEGER :: istat
+    INTEGER :: tid, istat
 
-    IF ( .NOT. ALLOCATED(VecIndexStore) ) THEN
-      !$OMP CRITICAL
-      IF ( .NOT. ALLOCATED(VecIndexStore) ) THEN
-        ALLOCATE( VecIndexStore(ISTORE_MAX_SIZE), STAT=istat )
-        VecIndexStore = 0
-        IF ( istat /= 0 ) CALL Fatal( 'GetPermIndexStore', 'Memory allocation error.' )
-      END IF
-      !$OMP END CRITICAL
+    CALL EnsureStores()
+    tid = 1
+    !$ tid = OMP_GET_THREAD_NUM() + 1
+    IF (.NOT. ALLOCATED(Stores(tid)%vistore)) THEN
+      ALLOCATE(Stores(tid)%vistore(ISTORE_MAX_SIZE), STAT=istat)
+      Stores(tid)%vistore = 0
+      IF (istat /= 0) CALL Fatal('GetPermIndexStore', 'Memory allocation error.')
     END IF
-    ind => VecIndexStore
+    ind => Stores(tid)%vistore
   END FUNCTION GetPermIndexStore
 
   FUNCTION GetValueStore(n) RESULT(val)
     IMPLICIT NONE
     REAL(KIND=dp), POINTER CONTIG :: val(:)
-    INTEGER :: n, istat
+    INTEGER :: tid, n, istat
 
-    IF ( .NOT.ALLOCATED(ValueStore) ) THEN
-      !$OMP CRITICAL
-      IF ( .NOT.ALLOCATED(ValueStore) ) THEN
-        ALLOCATE( ValueStore(VSTORE_MAX_SIZE), STAT=istat )
-        ValueStore = REAL(0, dp)
-        IF ( istat /= 0 ) CALL Fatal( 'GetValueStore', 'Memory allocation error.' )
-      END IF
-      !$OMP END CRITICAL
+    CALL EnsureStores()
+    tid = 1
+    !$ tid = OMP_GET_THREAD_NUM() + 1
+    IF (.NOT. ALLOCATED(Stores(tid)%vstore)) THEN
+      ALLOCATE(Stores(tid)%vstore(VSTORE_MAX_SIZE), STAT=istat)
+      Stores(tid)%vstore = REAL(0, dp)
+      IF (istat /= 0) CALL Fatal('GetValueStore', 'Memory allocation error.')
     END IF
     IF (n > VSTORE_MAX_SIZE) THEN
-      CALL Fatal( 'GetValueStore', 'Not enough memory allocated for store.' )
+      CALL Fatal('GetValueStore', 'Not enough memory allocated for store.')
     END IF
-    val => ValueStore
+    val => Stores(tid)%vstore
   END FUNCTION GetValueStore
 
 !> Returns handle to the active solver

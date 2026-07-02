@@ -161,6 +161,10 @@ jobs:
           cd ${GITHUB_WORKSPACE}/build
           cmake --install .
 
+      # Targeted stress-test: HeatSolveVec thread-safety (100 iterations).
+      # TopoOptHeat2DCompMin2 is known to fail threaded (quick label, not in set).
+      # Restore normal check when done:
+      #   ctest . -LE slow -E TopoOptHeat2DCompMin2 --timeout 600
       - name: check
         id: run-ctest
         timeout-minutes: 150
@@ -168,9 +172,15 @@ jobs:
           CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          ctest . \
-            -LE slow \
-            --timeout 600
+          fail_count=0
+          for i in $(seq 1 100); do
+            echo "--- HeatSolveVec iteration $i/100 ---"
+            ctest . \
+              -R "Step_stokes_heat_vec|HeatSolveVecCondMatrix|structmap8|DiscontinuousTempSlabDG" \
+              --timeout 60 || fail_count=$((fail_count + 1))
+          done
+          echo "HeatSolveVec failures: $fail_count / 100"
+          test $fail_count -eq 0
 
       - name: re-run tests
         if: always() && (steps.run-ctest.outcome == 'failure')

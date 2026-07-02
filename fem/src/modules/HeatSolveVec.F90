@@ -517,21 +517,17 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BC
     CHARACTER(:), ALLOCATABLE :: str
 
-    LOGICAL :: AllocationsDone = .FALSE.
     TYPE(Element_t), POINTER :: Parent
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), FORCE(:), Basis(:), pBasis(:), pdBasisdx(:,:), Dnodal(:)
+    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), Basis(:), pBasis(:), pdBasisdx(:,:), Dnodal(:)
     REAL(KIND=dp) :: DetJ, D, Esize, Gamma, nrm(3), weight, u, v, w
     LOGICAL :: Stat
-    INTEGER, ALLOCATABLE, SAVE :: Indexes(:), pIndexes(:), Ind(:)
+    INTEGER, ALLOCATABLE :: Indexes(:), pIndexes(:), Ind(:)
     INTEGER :: i,j,t,m,nd,pnd,ii
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t), SAVE :: Nodes, PNodes
-    
-    IF(.NOT. AllocationsDone) THEN
-      m = Mesh % MaxElementDofs
-      ALLOCATE(STIFF(m,m),FORCE(m),Basis(m),pBasis(m),pdBasisdx(m,3),Dnodal(m),Indexes(m),pIndexes(m),Ind(m))
-      AllocationsDone = .TRUE.
-    END IF
+    TYPE(Nodes_t) :: Nodes, PNodes
+
+    m = Mesh % MaxElementDofs
+    ALLOCATE(STIFF(m,m),FORCE(m),Basis(m),pBasis(m),pdBasisdx(m,3),Dnodal(m),Indexes(m),pIndexes(m),Ind(m))
 
     Dnodal(1:n) = GetReal(BC,str,Found)
     IF (.NOT. Found) RETURN

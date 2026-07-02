@@ -110,12 +110,9 @@ MODULE DefUtils
      MODULE PROCEDURE GetScalarLocalConsmode, GetVectorLocalConsmode
    END INTERFACE
 
-   ! Thread-indexed stores: flat 1D arrays of size ISTORE_MAX_SIZE*nthr
-   ! (or VSTORE_MAX_SIZE*nthr), sliced per thread as (tid-1)*stride+1:tid*stride.
-   ! Avoids ALLOCATABLE THREADPRIVATE (broken on Windows/GCC emutls) and avoids
-   ! rank-1 section of rank-2 pointer association (also fragile on some compilers).
    INTEGER, ALLOCATABLE, TARGET, PRIVATE :: IndexStore(:), VecIndexStore(:)
-   REAL(KIND=dp), ALLOCATABLE, TARGET, PRIVATE :: ValueStore(:)
+   REAL(KIND=dp), ALLOCATABLE, TARGET, PRIVATE  :: ValueStore(:)
+   !$OMP THREADPRIVATE(IndexStore, VecIndexStore, ValueStore)
 
    TYPE(Element_t), POINTER :: CurrentElementThread => NULL()
    !$OMP THREADPRIVATE(CurrentElementThread)
@@ -177,76 +174,55 @@ CONTAINS
   FUNCTION GetIndexStore() RESULT(ind)
     IMPLICIT NONE
     INTEGER, POINTER CONTIG :: ind(:)
-    INTEGER :: istat, tid, nthr, lo
+    INTEGER :: istat
 
-    tid = 1
-    !$ tid = OMP_GET_THREAD_NUM() + 1
     IF ( .NOT. ALLOCATED(IndexStore) ) THEN
       !$OMP CRITICAL
       IF ( .NOT. ALLOCATED(IndexStore) ) THEN
-        nthr = 1
-        !$ nthr = OMP_GET_MAX_THREADS()
-        ALLOCATE( IndexStore(ISTORE_MAX_SIZE * nthr), STAT=istat )
+        ALLOCATE( IndexStore(ISTORE_MAX_SIZE), STAT=istat )
         IndexStore = 0
         IF ( istat /= 0 ) CALL Fatal( 'GetIndexStore', 'Memory allocation error.' )
       END IF
       !$OMP END CRITICAL
     END IF
-    IF ( tid * ISTORE_MAX_SIZE > SIZE(IndexStore) ) &
-      CALL Fatal( 'GetIndexStore', 'Thread index exceeds store size; OMP_NUM_THREADS increased after init?' )
-    lo = (tid-1) * ISTORE_MAX_SIZE + 1
-    ind => IndexStore(lo : lo + ISTORE_MAX_SIZE - 1)
+    ind => IndexStore
   END FUNCTION GetIndexStore
 
   FUNCTION GetPermIndexStore() RESULT(ind)
     IMPLICIT NONE
     INTEGER, POINTER CONTIG :: ind(:)
-    INTEGER :: istat, tid, nthr, lo
+    INTEGER :: istat
 
-    tid = 1
-    !$ tid = OMP_GET_THREAD_NUM() + 1
     IF ( .NOT. ALLOCATED(VecIndexStore) ) THEN
       !$OMP CRITICAL
       IF ( .NOT. ALLOCATED(VecIndexStore) ) THEN
-        nthr = 1
-        !$ nthr = OMP_GET_MAX_THREADS()
-        ALLOCATE( VecIndexStore(ISTORE_MAX_SIZE * nthr), STAT=istat )
+        ALLOCATE( VecIndexStore(ISTORE_MAX_SIZE), STAT=istat )
         VecIndexStore = 0
         IF ( istat /= 0 ) CALL Fatal( 'GetPermIndexStore', 'Memory allocation error.' )
       END IF
       !$OMP END CRITICAL
     END IF
-    IF ( tid * ISTORE_MAX_SIZE > SIZE(VecIndexStore) ) &
-      CALL Fatal( 'GetPermIndexStore', 'Thread index exceeds store size; OMP_NUM_THREADS increased after init?' )
-    lo = (tid-1) * ISTORE_MAX_SIZE + 1
-    ind => VecIndexStore(lo : lo + ISTORE_MAX_SIZE - 1)
+    ind => VecIndexStore
   END FUNCTION GetPermIndexStore
 
   FUNCTION GetValueStore(n) RESULT(val)
     IMPLICIT NONE
     REAL(KIND=dp), POINTER CONTIG :: val(:)
-    INTEGER :: n, istat, tid, nthr, lo
+    INTEGER :: n, istat
 
-    tid = 1
-    !$ tid = OMP_GET_THREAD_NUM() + 1
-    IF ( .NOT. ALLOCATED(ValueStore) ) THEN
+    IF ( .NOT.ALLOCATED(ValueStore) ) THEN
       !$OMP CRITICAL
-      IF ( .NOT. ALLOCATED(ValueStore) ) THEN
-        nthr = 1
-        !$ nthr = OMP_GET_MAX_THREADS()
-        ALLOCATE( ValueStore(VSTORE_MAX_SIZE * nthr), STAT=istat )
+      IF ( .NOT.ALLOCATED(ValueStore) ) THEN
+        ALLOCATE( ValueStore(VSTORE_MAX_SIZE), STAT=istat )
         ValueStore = REAL(0, dp)
         IF ( istat /= 0 ) CALL Fatal( 'GetValueStore', 'Memory allocation error.' )
       END IF
       !$OMP END CRITICAL
     END IF
-    IF ( tid * VSTORE_MAX_SIZE > SIZE(ValueStore) ) &
-      CALL Fatal( 'GetValueStore', 'Thread index exceeds store size; OMP_NUM_THREADS increased after init?' )
     IF (n > VSTORE_MAX_SIZE) THEN
       CALL Fatal( 'GetValueStore', 'Not enough memory allocated for store.' )
     END IF
-    lo = (tid-1) * VSTORE_MAX_SIZE + 1
-    val => ValueStore(lo : lo + n - 1)
+    val => ValueStore
   END FUNCTION GetValueStore
 
 !> Returns handle to the active solver

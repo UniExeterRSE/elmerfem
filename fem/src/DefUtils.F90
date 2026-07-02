@@ -190,6 +190,8 @@ CONTAINS
       END IF
       !$OMP END CRITICAL
     END IF
+    IF ( tid > SIZE(IndexStore, 2) ) &
+      CALL Fatal( 'GetIndexStore', 'Thread index exceeds store size; OMP_NUM_THREADS increased after init?' )
     ind => IndexStore(:, tid)
   END FUNCTION GetIndexStore
 
@@ -211,6 +213,8 @@ CONTAINS
       END IF
       !$OMP END CRITICAL
     END IF
+    IF ( tid > SIZE(VecIndexStore, 2) ) &
+      CALL Fatal( 'GetPermIndexStore', 'Thread index exceeds store size; OMP_NUM_THREADS increased after init?' )
     ind => VecIndexStore(:, tid)
   END FUNCTION GetPermIndexStore
 
@@ -232,6 +236,8 @@ CONTAINS
       END IF
       !$OMP END CRITICAL
     END IF
+    IF ( tid > SIZE(ValueStore, 2) ) &
+      CALL Fatal( 'GetValueStore', 'Thread index exceeds store size; OMP_NUM_THREADS increased after init?' )
     IF (n > VSTORE_MAX_SIZE) THEN
       CALL Fatal( 'GetValueStore', 'Not enough memory allocated for store.' )
     END IF

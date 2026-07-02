@@ -110,9 +110,10 @@ MODULE DefUtils
      MODULE PROCEDURE GetScalarLocalConsmode, GetVectorLocalConsmode
    END INTERFACE
 
-   INTEGER, ALLOCATABLE, TARGET, PRIVATE :: IndexStore(:), VecIndexStore(:)
-   REAL(KIND=dp), ALLOCATABLE, TARGET, PRIVATE  :: ValueStore(:)
-   !$OMP THREADPRIVATE(IndexStore, VecIndexStore, ValueStore)
+   ! Thread-indexed stores (1..omp_get_max_threads()): avoids ALLOCATABLE
+   ! THREADPRIVATE which is broken on Windows/GCC emutls.
+   INTEGER, ALLOCATABLE, TARGET, PRIVATE :: IndexStore(:,:), VecIndexStore(:,:)
+   REAL(KIND=dp), ALLOCATABLE, TARGET, PRIVATE :: ValueStore(:,:)
 
    TYPE(Element_t), POINTER :: CurrentElementThread => NULL()
    !$OMP THREADPRIVATE(CurrentElementThread)
@@ -174,46 +175,67 @@ CONTAINS
   FUNCTION GetIndexStore() RESULT(ind)
     IMPLICIT NONE
     INTEGER, POINTER CONTIG :: ind(:)
-    INTEGER :: istat
+    INTEGER :: istat, tid, nthr
 
+    tid = 1
+    !$ tid = OMP_GET_THREAD_NUM() + 1
     IF ( .NOT. ALLOCATED(IndexStore) ) THEN
-        ALLOCATE( IndexStore(ISTORE_MAX_SIZE), STAT=istat )
+      !$OMP CRITICAL
+      IF ( .NOT. ALLOCATED(IndexStore) ) THEN
+        nthr = 1
+        !$ nthr = OMP_GET_MAX_THREADS()
+        ALLOCATE( IndexStore(ISTORE_MAX_SIZE, nthr), STAT=istat )
         IndexStore = 0
-        IF ( Istat /= 0 ) CALL Fatal( 'GetIndexStore', &
-                'Memory allocation error.' )
+        IF ( istat /= 0 ) CALL Fatal( 'GetIndexStore', 'Memory allocation error.' )
+      END IF
+      !$OMP END CRITICAL
     END IF
-    ind => IndexStore
+    ind => IndexStore(:, tid)
   END FUNCTION GetIndexStore
 
   FUNCTION GetPermIndexStore() RESULT(ind)
     IMPLICIT NONE
     INTEGER, POINTER CONTIG :: ind(:)
-    INTEGER :: istat
-     
+    INTEGER :: istat, tid, nthr
+
+    tid = 1
+    !$ tid = OMP_GET_THREAD_NUM() + 1
     IF ( .NOT. ALLOCATED(VecIndexStore) ) THEN
-      ALLOCATE( VecIndexStore(ISTORE_MAX_SIZE), STAT=istat )
-      VecIndexStore = 0
-      IF ( istat /= 0 ) CALL Fatal( 'GetPermIndexStore', &
-              'Memory allocation error.' )
+      !$OMP CRITICAL
+      IF ( .NOT. ALLOCATED(VecIndexStore) ) THEN
+        nthr = 1
+        !$ nthr = OMP_GET_MAX_THREADS()
+        ALLOCATE( VecIndexStore(ISTORE_MAX_SIZE, nthr), STAT=istat )
+        VecIndexStore = 0
+        IF ( istat /= 0 ) CALL Fatal( 'GetPermIndexStore', 'Memory allocation error.' )
+      END IF
+      !$OMP END CRITICAL
     END IF
-    ind => VecIndexStore
+    ind => VecIndexStore(:, tid)
   END FUNCTION GetPermIndexStore
 
   FUNCTION GetValueStore(n) RESULT(val)
     IMPLICIT NONE
     REAL(KIND=dp), POINTER CONTIG :: val(:)
-    INTEGER :: n, istat
+    INTEGER :: n, istat, tid, nthr
 
-    IF ( .NOT.ALLOCATED(ValueStore) ) THEN
-      ALLOCATE( ValueStore(VSTORE_MAX_SIZE), STAT=istat )
-      ValueStore = REAL(0, dp)
-      IF ( Istat /= 0 ) CALL Fatal( 'GetValueStore', &
-              'Memory allocation error.' )
+    tid = 1
+    !$ tid = OMP_GET_THREAD_NUM() + 1
+    IF ( .NOT. ALLOCATED(ValueStore) ) THEN
+      !$OMP CRITICAL
+      IF ( .NOT. ALLOCATED(ValueStore) ) THEN
+        nthr = 1
+        !$ nthr = OMP_GET_MAX_THREADS()
+        ALLOCATE( ValueStore(VSTORE_MAX_SIZE, nthr), STAT=istat )
+        ValueStore = REAL(0, dp)
+        IF ( istat /= 0 ) CALL Fatal( 'GetValueStore', 'Memory allocation error.' )
+      END IF
+      !$OMP END CRITICAL
     END IF
     IF (n > VSTORE_MAX_SIZE) THEN
       CALL Fatal( 'GetValueStore', 'Not enough memory allocated for store.' )
     END IF
-    val => ValueStore(1:n)
+    val => ValueStore(1:n, tid)
   END FUNCTION GetValueStore
 
 !> Returns handle to the active solver

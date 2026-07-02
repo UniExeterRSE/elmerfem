@@ -110,10 +110,12 @@ MODULE DefUtils
      MODULE PROCEDURE GetScalarLocalConsmode, GetVectorLocalConsmode
    END INTERFACE
 
-   ! Thread-indexed stores (1..omp_get_max_threads()): avoids ALLOCATABLE
-   ! THREADPRIVATE which is broken on Windows/GCC emutls.
-   INTEGER, ALLOCATABLE, TARGET, PRIVATE :: IndexStore(:,:), VecIndexStore(:,:)
-   REAL(KIND=dp), ALLOCATABLE, TARGET, PRIVATE :: ValueStore(:,:)
+   ! Thread-indexed stores: flat 1D arrays of size ISTORE_MAX_SIZE*nthr
+   ! (or VSTORE_MAX_SIZE*nthr), sliced per thread as (tid-1)*stride+1:tid*stride.
+   ! Avoids ALLOCATABLE THREADPRIVATE (broken on Windows/GCC emutls) and avoids
+   ! rank-1 section of rank-2 pointer association (also fragile on some compilers).
+   INTEGER, ALLOCATABLE, TARGET, PRIVATE :: IndexStore(:), VecIndexStore(:)
+   REAL(KIND=dp), ALLOCATABLE, TARGET, PRIVATE :: ValueStore(:)
 
    TYPE(Element_t), POINTER :: CurrentElementThread => NULL()
    !$OMP THREADPRIVATE(CurrentElementThread)
@@ -175,7 +177,7 @@ CONTAINS
   FUNCTION GetIndexStore() RESULT(ind)
     IMPLICIT NONE
     INTEGER, POINTER CONTIG :: ind(:)
-    INTEGER :: istat, tid, nthr
+    INTEGER :: istat, tid, nthr, lo
 
     tid = 1
     !$ tid = OMP_GET_THREAD_NUM() + 1
@@ -184,21 +186,22 @@ CONTAINS
       IF ( .NOT. ALLOCATED(IndexStore) ) THEN
         nthr = 1
         !$ nthr = OMP_GET_MAX_THREADS()
-        ALLOCATE( IndexStore(ISTORE_MAX_SIZE, nthr), STAT=istat )
+        ALLOCATE( IndexStore(ISTORE_MAX_SIZE * nthr), STAT=istat )
         IndexStore = 0
         IF ( istat /= 0 ) CALL Fatal( 'GetIndexStore', 'Memory allocation error.' )
       END IF
       !$OMP END CRITICAL
     END IF
-    IF ( tid > SIZE(IndexStore, 2) ) &
+    IF ( tid * ISTORE_MAX_SIZE > SIZE(IndexStore) ) &
       CALL Fatal( 'GetIndexStore', 'Thread index exceeds store size; OMP_NUM_THREADS increased after init?' )
-    ind => IndexStore(:, tid)
+    lo = (tid-1) * ISTORE_MAX_SIZE + 1
+    ind => IndexStore(lo : lo + ISTORE_MAX_SIZE - 1)
   END FUNCTION GetIndexStore
 
   FUNCTION GetPermIndexStore() RESULT(ind)
     IMPLICIT NONE
     INTEGER, POINTER CONTIG :: ind(:)
-    INTEGER :: istat, tid, nthr
+    INTEGER :: istat, tid, nthr, lo
 
     tid = 1
     !$ tid = OMP_GET_THREAD_NUM() + 1
@@ -207,21 +210,22 @@ CONTAINS
       IF ( .NOT. ALLOCATED(VecIndexStore) ) THEN
         nthr = 1
         !$ nthr = OMP_GET_MAX_THREADS()
-        ALLOCATE( VecIndexStore(ISTORE_MAX_SIZE, nthr), STAT=istat )
+        ALLOCATE( VecIndexStore(ISTORE_MAX_SIZE * nthr), STAT=istat )
         VecIndexStore = 0
         IF ( istat /= 0 ) CALL Fatal( 'GetPermIndexStore', 'Memory allocation error.' )
       END IF
       !$OMP END CRITICAL
     END IF
-    IF ( tid > SIZE(VecIndexStore, 2) ) &
+    IF ( tid * ISTORE_MAX_SIZE > SIZE(VecIndexStore) ) &
       CALL Fatal( 'GetPermIndexStore', 'Thread index exceeds store size; OMP_NUM_THREADS increased after init?' )
-    ind => VecIndexStore(:, tid)
+    lo = (tid-1) * ISTORE_MAX_SIZE + 1
+    ind => VecIndexStore(lo : lo + ISTORE_MAX_SIZE - 1)
   END FUNCTION GetPermIndexStore
 
   FUNCTION GetValueStore(n) RESULT(val)
     IMPLICIT NONE
     REAL(KIND=dp), POINTER CONTIG :: val(:)
-    INTEGER :: n, istat, tid, nthr
+    INTEGER :: n, istat, tid, nthr, lo
 
     tid = 1
     !$ tid = OMP_GET_THREAD_NUM() + 1
@@ -230,18 +234,19 @@ CONTAINS
       IF ( .NOT. ALLOCATED(ValueStore) ) THEN
         nthr = 1
         !$ nthr = OMP_GET_MAX_THREADS()
-        ALLOCATE( ValueStore(VSTORE_MAX_SIZE, nthr), STAT=istat )
+        ALLOCATE( ValueStore(VSTORE_MAX_SIZE * nthr), STAT=istat )
         ValueStore = REAL(0, dp)
         IF ( istat /= 0 ) CALL Fatal( 'GetValueStore', 'Memory allocation error.' )
       END IF
       !$OMP END CRITICAL
     END IF
-    IF ( tid > SIZE(ValueStore, 2) ) &
+    IF ( tid * VSTORE_MAX_SIZE > SIZE(ValueStore) ) &
       CALL Fatal( 'GetValueStore', 'Thread index exceeds store size; OMP_NUM_THREADS increased after init?' )
     IF (n > VSTORE_MAX_SIZE) THEN
       CALL Fatal( 'GetValueStore', 'Not enough memory allocated for store.' )
     END IF
-    val => ValueStore(1:n, tid)
+    lo = (tid-1) * VSTORE_MAX_SIZE + 1
+    val => ValueStore(lo : lo + n - 1)
   END FUNCTION GetValueStore
 
 !> Returns handle to the active solver

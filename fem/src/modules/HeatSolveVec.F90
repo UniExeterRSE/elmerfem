@@ -185,12 +185,17 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   CHARACTER(LEN=MAX_NAME_LEN) :: EqName
   CHARACTER(*), PARAMETER :: Caller = 'HeatSolver'
 
-  ! Thread-local handle storage for LocalMatrixVec — indexed 1..nthr.
-  ! Replaces SAVE+THREADPRIVATE inside the subroutine; accessed via ASSOCIATE(tid).
+  ! Thread-local handle storage indexed 1..nthr for LocalMatrixVec, LocalMatrix,
+  ! and LocalMatrixBC. Replaces SAVE+THREADPRIVATE; accessed via ASSOCIATE(tid).
+  ! VecConvVelo_h: 3-component per thread for LocalMatrixVec (Vec path).
+  ! LM_ConvVelo_h: scalar per thread for LocalMatrix (non-Vec path).
   TYPE(ValueHandle_t), ALLOCATABLE :: &
       Source_h(:), Cond_h(:), Cp_h(:), Rho_h(:), ConvFlag_h(:), &
-      ConvVelo_h(:,:), PerfRate_h(:), PerfDens_h(:), PerfCp_h(:), &
-      PerfRefTemp_h(:), VolSource_h(:), OrigMesh_h(:)
+      VecConvVelo_h(:,:), PerfRate_h(:), PerfDens_h(:), PerfCp_h(:), &
+      PerfRefTemp_h(:), VolSource_h(:), OrigMesh_h(:), &
+      LM_ConvVelo_h(:), PlateSpeed_h(:), &
+      HeatFlux_h(:), HeatTrans_h(:), ExtTemp_h(:), Farfield_h(:), &
+      RadFlag_h(:), RadExtTemp_h(:), EmisBC_h(:), EmisMat_h(:), TorBC_h(:)
   TYPE(VariableHandle_t), ALLOCATABLE :: ConvField_h(:)
 
   INTERFACE
@@ -265,9 +270,13 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   !$ nthr = omp_get_max_threads()
 
   ALLOCATE( Source_h(nthr), Cond_h(nthr), Cp_h(nthr), Rho_h(nthr), &
-      ConvFlag_h(nthr), ConvVelo_h(3,nthr), PerfRate_h(nthr), &
+      ConvFlag_h(nthr), VecConvVelo_h(3,nthr), PerfRate_h(nthr), &
       PerfDens_h(nthr), PerfCp_h(nthr), PerfRefTemp_h(nthr), &
-      VolSource_h(nthr), OrigMesh_h(nthr), ConvField_h(nthr) )
+      VolSource_h(nthr), OrigMesh_h(nthr), ConvField_h(nthr), &
+      LM_ConvVelo_h(nthr), PlateSpeed_h(nthr), &
+      HeatFlux_h(nthr), HeatTrans_h(nthr), ExtTemp_h(nthr), Farfield_h(nthr), &
+      RadFlag_h(nthr), RadExtTemp_h(nthr), EmisBC_h(nthr), EmisMat_h(nthr), &
+      TorBC_h(nthr) )
 
   nColours = GetNOFColours(Solver)
 
@@ -619,7 +628,7 @@ CONTAINS
     ASSOCIATE( &
         Source_h      => Source_h(tid),     Cond_h        => Cond_h(tid),      &
         Cp_h          => Cp_h(tid),         Rho_h         => Rho_h(tid),       &
-        ConvFlag_h    => ConvFlag_h(tid),   ConvVelo_h    => ConvVelo_h(:,tid), &
+        ConvFlag_h    => ConvFlag_h(tid),   ConvVelo_h    => VecConvVelo_h(:,tid), &
         PerfRate_h    => PerfRate_h(tid),   PerfDens_h    => PerfDens_h(tid),   &
         PerfCp_h      => PerfCp_h(tid),     PerfRefTemp_h => PerfRefTemp_h(tid),&
         VolSource_h   => VolSource_h(tid),  OrigMesh_h    => OrigMesh_h(tid),   &
@@ -830,21 +839,24 @@ CONTAINS
     REAL(KIND=dp) :: PlateTangent(3), PlateSpeed
     REAL(KIND=dp), POINTER :: CondTensor(:,:)
     LOGICAL :: Stat,Found,ConvComp,ConvConst
-    INTEGER :: i,j,t,p,q,CondRank
+    INTEGER :: i,j,t,p,q,CondRank,tid
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
-
-    TYPE(ValueHandle_t), SAVE :: Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, &
-        ConvVelo_h, PlateSpeed_h, PerfRate_h, PerfDens_h, PerfCp_h, PerfRefTemp_h, &
-        VolSource_h, OrigMesh_h
-
-    TYPE(VariableHandle_t), SAVE :: ConvField_h
-
-!$OMP  THREADPRIVATE(Source_h, Cond_h, Cp_h, Rho_h, ConvFlag_h, ConvVelo_h, PlateSpeed_h, PerfRate_h, &
-!$OMP& PerfDens_h, PerfCp_h, PerfRefTemp_h, VolSource_h, OrigMesh_h, ConvField_h)
-
+    ! Handles live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( &
+        Source_h      => Source_h(tid),       Cond_h        => Cond_h(tid),          &
+        Cp_h          => Cp_h(tid),           Rho_h         => Rho_h(tid),           &
+        ConvFlag_h    => ConvFlag_h(tid),     ConvVelo_h    => LM_ConvVelo_h(tid),   &
+        PlateSpeed_h  => PlateSpeed_h(tid),   PerfRate_h    => PerfRate_h(tid),       &
+        PerfDens_h    => PerfDens_h(tid),     PerfCp_h      => PerfCp_h(tid),         &
+        PerfRefTemp_h => PerfRefTemp_h(tid),  VolSource_h   => VolSource_h(tid),      &
+        OrigMesh_h    => OrigMesh_h(tid),     ConvField_h   => ConvField_h(tid) )
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
@@ -1007,6 +1019,8 @@ CONTAINS
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     
 20  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -1066,16 +1080,23 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BC       
 
+    INTEGER :: tid
     TYPE(Nodes_t) :: Nodes
-    TYPE(ValueHandle_t), SAVE :: HeatFlux_h, HeatTrans_h, ExtTemp_h, Farfield_h, &
-        RadFlag_h, RadExtTemp_h, EmisBC_h, EmisMat_h, TorBC_h
-
-    !$OMP  THREADPRIVATE(HeatFlux_h,HeatTrans_h,ExtTemp_h,Farfield_h,RadFlag_h, &
-    !$OMP& RadExtTemp_h, EmisBC_h, EmisMat_h, TorBC_h )
+    ! Handles live in parent scope as thread-indexed arrays; see ASSOCIATE below.
 !------------------------------------------------------------------------------
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN
-    
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( &
+        HeatFlux_h   => HeatFlux_h(tid),   HeatTrans_h  => HeatTrans_h(tid),  &
+        ExtTemp_h    => ExtTemp_h(tid),     Farfield_h   => Farfield_h(tid),   &
+        RadFlag_h    => RadFlag_h(tid),     RadExtTemp_h => RadExtTemp_h(tid),  &
+        EmisBC_h     => EmisBC_h(tid),      EmisMat_h    => EmisMat_h(tid),    &
+        TorBC_h      => TorBC_h(tid) )
+
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( HeatFlux_h,'Boundary Condition','Heat Flux')
       CALL ListInitElementKeyword( HeatTrans_h,'Boundary Condition','Heat Transfer Coefficient')
@@ -1236,7 +1257,8 @@ CONTAINS
     ELSE    
       CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
     END IF
-      
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------

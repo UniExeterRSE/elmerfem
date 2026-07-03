@@ -43,6 +43,27 @@ MODULE IncompressibleLocalForms
 
   REAL(KIND=dp), ALLOCATABLE, SAVE :: bx(:), bxprev(:)
 
+  ! Per-thread handle/cache storage for LocalBulkMatrix and EffectiveViscosityVec.
+  ! NOT THREADPRIVATE (Windows/GCC emutls bug inherits master's ALLOCATABLE/POINTER
+  ! THREADPRIVATE data into workers instead of giving independent copies). Instead,
+  ! this is a plain module-level array indexed by omp_get_thread_num()+1; each thread
+  ! only ever touches its own slot in the parallel bulk-assembly loop. Slot 1 is filled
+  ! by the serial InitHandles=.TRUE. pass (element 1); IncompressibleNSSolver then
+  ! broadcasts slot 1 to all other slots before the parallel region starts, so every
+  ! thread enters with identical resolved handle configuration.
+  TYPE :: NSHandles_t
+    TYPE(ValueHandle_t) :: Dens_h, Load_h(3)
+    TYPE(ValueHandle_t) :: Visc_h, ViscModel_h, ViscExp_h, ViscCritical_h, &
+        ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
+        ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
+        ViscTemp_h
+    REAL(KIND=dp) :: R = 8.314_dp, NewtonRelax = 0.0_dp
+    LOGICAL :: ConstantVisc = .FALSE., Visited = .FALSE., GotRelax = .FALSE.
+    LOGICAL :: SaveShear = .FALSE., SaveVisc = .FALSE., SaveWeight = .FALSE.
+    TYPE(Variable_t), POINTER :: ShearVar => NULL(), ViscVar => NULL(), WeightVar => NULL()
+  END TYPE NSHandles_t
+  TYPE(NSHandles_t), ALLOCATABLE :: NSHandles(:)
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -85,13 +106,18 @@ CONTAINS
         JAC(ntot*(dim+1),ntot*(dim+1) )
 
     INTEGER :: t, i, j, k, p, q, ngp, allocstat, elemdim
-    INTEGER :: DOFs
-
-    TYPE(ValueHandle_t), SAVE :: Dens_h, Load_h(3)
+    INTEGER :: DOFs, tid
 
 !DIR$ ATTRIBUTES ALIGN:64 :: BasisVec, dBasisdxVec, DetJVec, rhoVec, VeloPresVec, loadAtIpVec
 !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE, weight_a, weight_b, weight_c
 !------------------------------------------------------------------------------
+
+    ! Dens_h/Load_h and (inside EffectiveViscosityVec) the viscosity handles live in
+    ! NSHandles(tid) — a per-thread slot, not SAVE/THREADPRIVATE. See NSHandles_t above.
+    tid = 1
+    !$ tid = OMP_GET_THREAD_NUM() + 1
+
+    ASSOCIATE( Dens_h => NSHandles(tid) % Dens_h, Load_h => NSHandles(tid) % Load_h )
 
     CALL GetElementNodesVec( Nodes )
     STIFF = 0._dp
@@ -483,7 +509,7 @@ CONTAINS
                  Usolver = SchurSolver, VecAssembly = .TRUE.)
     END IF
 
-
+    END ASSOCIATE
 
 !------------------------------------------------------------------------------
 
@@ -502,21 +528,34 @@ CONTAINS
       REAL(KIND=dp), POINTER  :: EffViscVec(:)
       REAL(KIND=dp), ALLOCATABLE :: DetJVec(:)
       
-      LOGICAL :: Found     
+      LOGICAL :: Found
       CHARACTER(LEN=MAX_NAME_LEN) :: ViscModel
-      TYPE(ValueHandle_t), SAVE :: Visc_h, ViscModel_h, ViscExp_h, ViscCritical_h, &
-          ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
-          ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
-          ViscTemp_h
-      REAL(KIND=dp), SAVE :: R, NewtonRelax
       REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond
-      LOGICAL, SAVE :: ConstantVisc = .FALSE., Visited = .FALSE., GotRelax = .FALSE.
       REAL(KIND=dp), ALLOCATABLE :: ss(:), s(:), ArrheniusFactorVec(:)
       REAL(KIND=dp), POINTER :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:)
-      TYPE(Variable_t), POINTER, SAVE :: ShearVar, ViscVar, WeightVar
-      LOGICAL, SAVE :: SaveShear, SaveVisc, SaveWeight
       CHARACTER(*), PARAMETER :: Caller = 'EffectiveViscosityVec'
-     
+
+      ! All handle/cache state lives in NSHandles(tid) (see NSHandles_t, module scope)
+      ! — not SAVE/THREADPRIVATE. "tid" is host-associated from LocalBulkMatrix.
+      ASSOCIATE( &
+          Visc_h => NSHandles(tid) % Visc_h, ViscModel_h => NSHandles(tid) % ViscModel_h, &
+          ViscExp_h => NSHandles(tid) % ViscExp_h, ViscCritical_h => NSHandles(tid) % ViscCritical_h, &
+          ViscNominal_h => NSHandles(tid) % ViscNominal_h, ViscDiff_h => NSHandles(tid) % ViscDiff_h, &
+          ViscTrans_h => NSHandles(tid) % ViscTrans_h, ViscYasuda_h => NSHandles(tid) % ViscYasuda_h, &
+          ViscGlenExp_h => NSHandles(tid) % ViscGlenExp_h, ViscGlenFactor_h => NSHandles(tid) % ViscGlenFactor_h, &
+          ViscArrSet_h => NSHandles(tid) % ViscArrSet_h, ViscArr_h => NSHandles(tid) % ViscArr_h, &
+          ViscTLimit_h => NSHandles(tid) % ViscTLimit_h, ViscRate1_h => NSHandles(tid) % ViscRate1_h, &
+          ViscRate2_h => NSHandles(tid) % ViscRate2_h, ViscEne1_h => NSHandles(tid) % ViscEne1_h, &
+          ViscEne2_h => NSHandles(tid) % ViscEne2_h, ViscTemp_h => NSHandles(tid) % ViscTemp_h, &
+          R => NSHandles(tid) % R, NewtonRelax => NSHandles(tid) % NewtonRelax, &
+          ConstantVisc => NSHandles(tid) % ConstantVisc, Visited => NSHandles(tid) % Visited, &
+          GotRelax => NSHandles(tid) % GotRelax, &
+          SaveShear => NSHandles(tid) % SaveShear, SaveVisc => NSHandles(tid) % SaveVisc, &
+          SaveWeight => NSHandles(tid) % SaveWeight )
+      ! ShearVar/ViscVar/WeightVar are reassigned (=>) below, so they cannot be ASSOCIATE
+      ! names (Fortran does not let an associate-name for a POINTER component be
+      ! re-pointed) — referenced via NSHandles(tid)%... directly instead.
+
       IF(InitHandles ) THEN
         CALL Info(Caller,'Initializing handles for viscosity models',Level=8)
 
@@ -574,48 +613,48 @@ CONTAINS
           END IF
         END IF
 
-        ShearVar => VariableGet( CurrentModel % Mesh % Variables,'Shearrate',ThisOnly=.TRUE.)
-        SaveShear = ASSOCIATED(ShearVar)
+        NSHandles(tid) % ShearVar => VariableGet( CurrentModel % Mesh % Variables,'Shearrate',ThisOnly=.TRUE.)
+        SaveShear = ASSOCIATED(NSHandles(tid) % ShearVar)
         Found = .FALSE.
         IF(SaveShear) THEN
-          IF(ShearVar % TYPE == Variable_on_gauss_points ) THEN
+          IF(NSHandles(tid) % ShearVar % TYPE == Variable_on_gauss_points ) THEN
             CALL Info(Caller,'Saving "Shearrate" on ip points!',Level=10)
-          ELSE IF( ShearVar % TYPE == Variable_on_elements ) THEN
+          ELSE IF( NSHandles(tid) % ShearVar % TYPE == Variable_on_elements ) THEN
             CALL Info(Caller,'Saving "Shearrate" on elements!',Level=10)
-          ELSE IF( ShearVar % TYPE == Variable_on_nodes ) THEN
+          ELSE IF( NSHandles(tid) % ShearVar % TYPE == Variable_on_nodes ) THEN
             CALL Info(Caller,'Saving "Shearrate" on nodes!',Level=10)
             Found = .TRUE.
           ELSE
             CALL Fatal(Caller,'Invalid field type for "Shearrate"!')
           END IF
-          ShearVar % Values = 0.0_dp
+          NSHandles(tid) % ShearVar % Values = 0.0_dp
         END IF
 
-        ViscVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
-        SaveVisc = ASSOCIATED(ViscVar)        
+        NSHandles(tid) % ViscVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity',ThisOnly=.TRUE.)
+        SaveVisc = ASSOCIATED(NSHandles(tid) % ViscVar)        
         IF(SaveVisc) THEN
-          IF(ViscVar % TYPE == Variable_on_gauss_points ) THEN
+          IF(NSHandles(tid) % ViscVar % TYPE == Variable_on_gauss_points ) THEN
             CALL Info(Caller,'Saving "Viscosity" on ip points!',Level=10)
-          ELSE IF( ViscVar % TYPE == Variable_on_elements ) THEN
+          ELSE IF( NSHandles(tid) % ViscVar % TYPE == Variable_on_elements ) THEN
             CALL Info(Caller,'Saving "Viscosity" on elements!',Level=10)
-          ELSE IF( ViscVar % TYPE == Variable_on_nodes ) THEN
+          ELSE IF( NSHandles(tid) % ViscVar % TYPE == Variable_on_nodes ) THEN
             CALL Info(Caller,'Saving "Viscosity" on nodes!',Level=10)
             Found = .TRUE.
           ELSE
             CALL Fatal(Caller,'Invalid field type for "Shearrate"!')
           END IF
-          ViscVar % Values = 0.0_dp
+          NSHandles(tid) % ViscVar % Values = 0.0_dp
         END IF
 
         SaveWeight = .FALSE.
         IF( Found ) THEN
-          WeightVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity Weight',ThisOnly=.TRUE.)
-          IF( ASSOCIATED( WeightVar ) ) THEN
-            IF( WeightVar % TYPE /= Variable_on_nodes ) THEN
+          NSHandles(tid) % WeightVar => VariableGet( CurrentModel % Mesh % Variables,'Viscosity Weight',ThisOnly=.TRUE.)
+          IF( ASSOCIATED( NSHandles(tid) % WeightVar ) ) THEN
+            IF( NSHandles(tid) % WeightVar % TYPE /= Variable_on_nodes ) THEN
               CALL Fatal(Caller,'Invalid field type for "Viscosity Weight"!')
             END IF
             SaveWeight = .TRUE.
-            WeightVar % Values = 0.0_dp
+            NSHandles(tid) % WeightVar % Values = 0.0_dp
           END IF
         END IF        
           
@@ -659,22 +698,22 @@ CONTAINS
       ss(1:ngp) = 0.5_dp * ss(1:ngp)
 
       IF(SaveShear) THEN
-        IF( ShearVar % TYPE == Variable_on_nodes ) THEN
+        IF( NSHandles(tid) % ShearVar % TYPE == Variable_on_nodes ) THEN
           DO i=1,n
-            ShearVar % Values(ShearVar % Perm(Element % NodeIndexes(i))) = &
-                ShearVar % Values(ShearVar % Perm(Element % NodeIndexes(i))) + &
+            NSHandles(tid) % ShearVar % Values(NSHandles(tid) % ShearVar % Perm(Element % NodeIndexes(i))) = &
+                NSHandles(tid) % ShearVar % Values(NSHandles(tid) % ShearVar % Perm(Element % NodeIndexes(i))) + &
                 SUM(BasisVec(1:ngp,i)*ss(1:ngp)*DetJVec(1:ngp))
           END DO
         ELSE
           i = Element % ElementIndex
-          IF( ShearVar % TYPE == Variable_on_gauss_points ) THEN
-            j = ShearVar % Perm(i+1) - ShearVar % Perm(i)
+          IF( NSHandles(tid) % ShearVar % TYPE == Variable_on_gauss_points ) THEN
+            j = NSHandles(tid) % ShearVar % Perm(i+1) - NSHandles(tid) % ShearVar % Perm(i)
             IF(j /= ngp) THEN
               CALL Fatal(Caller,'Expected '//I2S(j)//' gauss point for "Shearrate" got '//I2S(ngp))
             END IF
-            ShearVar % Values(ShearVar % Perm(i)+1:ShearVar % Perm(i+1)) = ss(1:ngp)
-          ELSE IF( ShearVar % TYPE == Variable_on_elements ) THEN
-            ShearVar % Values(ShearVar % Perm(i)) = SUM(ss(1:ngp)) / ngp
+            NSHandles(tid) % ShearVar % Values(NSHandles(tid) % ShearVar % Perm(i)+1:NSHandles(tid) % ShearVar % Perm(i+1)) = ss(1:ngp)
+          ELSE IF( NSHandles(tid) % ShearVar % TYPE == Variable_on_elements ) THEN
+            NSHandles(tid) % ShearVar % Values(NSHandles(tid) % ShearVar % Perm(i)) = SUM(ss(1:ngp)) / ngp
           END IF
         END IF
       END IF
@@ -833,22 +872,22 @@ CONTAINS
       
       ! If requested, save viscosity field (on nodes, ip points or elements). 
       IF(SaveVisc) THEN
-        IF( ViscVar % TYPE == Variable_on_nodes ) THEN
+        IF( NSHandles(tid) % ViscVar % TYPE == Variable_on_nodes ) THEN
           DO i=1,n
-            ViscVar % Values(ViscVar % Perm(Element % NodeIndexes(i))) = &
-                ViscVar % Values(ViscVar % Perm(Element % NodeIndexes(i))) + &
+            NSHandles(tid) % ViscVar % Values(NSHandles(tid) % ViscVar % Perm(Element % NodeIndexes(i))) = &
+                NSHandles(tid) % ViscVar % Values(NSHandles(tid) % ViscVar % Perm(Element % NodeIndexes(i))) + &
                 SUM(BasisVec(1:ngp,i)*ViscVec(1:ngp)*detJVec(1:ngp))
           END DO
         ELSE
           i = Element % ElementIndex
-          IF( ViscVar % TYPE == Variable_on_gauss_points ) THEN
-            j = ViscVar % Perm(i+1) - ViscVar % Perm(i) 
+          IF( NSHandles(tid) % ViscVar % TYPE == Variable_on_gauss_points ) THEN
+            j = NSHandles(tid) % ViscVar % Perm(i+1) - NSHandles(tid) % ViscVar % Perm(i) 
             IF(j /= ngp) THEN
               CALL Fatal(Caller,'Expected '//I2S(j)//' gauss point for "Viscosity" got '//I2S(ngp))
             END IF
-            ViscVar % Values(ViscVar % Perm(i)+1:ViscVar % Perm(i+1)) = ViscVec(1:ngp)
+            NSHandles(tid) % ViscVar % Values(NSHandles(tid) % ViscVar % Perm(i)+1:NSHandles(tid) % ViscVar % Perm(i+1)) = ViscVec(1:ngp)
           ELSE
-            ViscVar % Values(ViscVar % Perm(i)) = SUM(ViscVec(1:ngp)) / ngp
+            NSHandles(tid) % ViscVar % Values(NSHandles(tid) % ViscVar % Perm(i)) = SUM(ViscVec(1:ngp)) / ngp
           END IF
         END IF
       END IF
@@ -856,12 +895,14 @@ CONTAINS
       ! If requested, save normalization weight associated to viscosity (and shearrate).
       IF(SaveWeight) THEN
         DO i=1,n
-          WeightVar % Values(WeightVar % Perm(Element % NodeIndexes(i))) = &
-              WeightVar % Values(WeightVar % Perm(Element % NodeIndexes(i))) + &
+          NSHandles(tid) % WeightVar % Values(NSHandles(tid) % WeightVar % Perm(Element % NodeIndexes(i))) = &
+              NSHandles(tid) % WeightVar % Values(NSHandles(tid) % WeightVar % Perm(Element % NodeIndexes(i))) + &
               SUM(BasisVec(1:ngp,i)*detJVec(1:ngp))
         END DO
       END IF
-      
+
+      END ASSOCIATE
+
     END FUNCTION EffectiveViscosityVec
       
 
@@ -1602,7 +1643,7 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   TYPE(GaussIntegrationPoints_t) :: IP
 
   INTEGER :: Element_id
-  INTEGER :: i, n, nb, nd, nbdofs, dim, Active, maxiter, iter
+  INTEGER :: i, n, nb, nd, nbdofs, dim, Active, maxiter, iter, nthr
   INTEGER :: stimestep = -1
  
   REAL(KIND=dp) :: Norm
@@ -1626,6 +1667,15 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
 
   dim = CoordinateSystemDimension()
   Mesh => GetMesh()
+
+  ! Per-thread ValueHandle_t/cache storage for LocalBulkMatrix and
+  ! EffectiveViscosityVec (see NSHandles_t, IncompressibleLocalForms module scope).
+  ! Not called concurrently from more than one thread, so no locking needed here.
+  IF (.NOT. ALLOCATED(NSHandles)) THEN
+    nthr = 1
+    !$ nthr = OMP_GET_MAX_THREADS()
+    ALLOCATE(NSHandles(nthr))
+  END IF
 
   !-----------------------------------------------------------------------------
   ! Allocate some permanent storage, this is done first time only:
@@ -1740,7 +1790,14 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
           SpecificLoad, StokesFlow, dt, LinearAssembly, nb, Newton, Transient, .TRUE., &
           SchurSolver )
     END DO
-    
+
+    ! The serial call above (element 1) resolved NSHandles(1) — the material/BF
+    ! keyword lookups and the ShearVar/ViscVar/WeightVar zeroing. Broadcast that
+    ! resolved state to every other thread's slot before the parallel bulk loop,
+    ! since each thread there calls LocalBulkMatrix with InitHandles=.FALSE. and
+    ! only ever touches its own NSHandles(tid).
+    IF (nthr > 1) NSHandles(2:nthr) = NSHandles(1)
+
     !$OMP PARALLEL SHARED(Active, dim, SpecificLoad, StokesFlow, &
     !$OMP                 DivCurlForm, GradPVersion, &
     !$OMP                 dt, LinearAssembly, Newton, Transient, SchurSolver ) &

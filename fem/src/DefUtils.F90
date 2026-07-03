@@ -112,12 +112,12 @@ MODULE DefUtils
 
    ! Per-thread scratch storage — NOT THREADPRIVATE; indexed by omp_get_thread_num()+1.
    ! Avoids the GCC/emutls bug: ALLOCATABLE THREADPRIVATE vars are shared on Windows.
-   TYPE :: DefUtils_Store_t
+   TYPE, PRIVATE :: DefUtils_Store_t
      INTEGER, ALLOCATABLE :: istore(:)
      INTEGER, ALLOCATABLE :: vistore(:)
      REAL(KIND=dp), ALLOCATABLE :: vstore(:)
    END TYPE DefUtils_Store_t
-   TYPE(DefUtils_Store_t), ALLOCATABLE, TARGET, SAVE :: Stores(:)
+   TYPE(DefUtils_Store_t), ALLOCATABLE, PRIVATE, TARGET, SAVE :: Stores(:)
 
    TYPE(Element_t), POINTER :: CurrentElementThread => NULL()
    !$OMP THREADPRIVATE(CurrentElementThread)

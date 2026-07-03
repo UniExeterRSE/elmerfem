@@ -516,6 +516,14 @@ CONTAINS
 !> compare a passing vs. a failing run's bubble matrix bit-for-bit and confirm
 !> whether the intermittent Windows InvertMatrix failure in Step_stokes_heat_vec
 !> stems from floating-point summation-order noise rather than a data race.
+!>
+!> Every call overwrites 'condensate_last_element.log' with the element index
+!> about to be condensed, so that after a run crashes (InvertMatrix aborts the
+!> process on a singular matrix) the culprit element can still be identified
+!> from disk. A second, targeted pass can then set
+!> ELMER_DEBUG_CONDENSATE_ELEMENT=<that index> to record only that one
+!> element's matrix (tiny log) and wait for a run where it succeeds.
+!>
 !> Remove once that investigation is closed out.
 !------------------------------------------------------------------------------
   SUBROUTINE DebugDumpCondensate( Tag, Element, nd, nb, K, F )
@@ -525,14 +533,25 @@ CONTAINS
     INTEGER, INTENT(IN) :: nd, nb
     REAL(KIND=dp), INTENT(IN) :: K(:,:), F(:)
 !------------------------------------------------------------------------------
-    INTEGER :: i, j, dbgunit, EnvLen, EnvStat
+    INTEGER :: i, j, dbgunit, EnvLen, EnvStat, TargetElem, TargetLen, TargetStat
     CHARACTER(LEN=8) :: EnvVal
+    CHARACTER(LEN=16) :: TargetVal
 !------------------------------------------------------------------------------
     IF ( nb <= 0 ) RETURN
     CALL GET_ENVIRONMENT_VARIABLE( 'ELMER_DEBUG_CONDENSATE', EnvVal, EnvLen, EnvStat )
     IF ( EnvStat /= 0 .OR. TRIM(EnvVal) /= '1' ) RETURN
 
+    TargetElem = 0
+    CALL GET_ENVIRONMENT_VARIABLE( 'ELMER_DEBUG_CONDENSATE_ELEMENT', TargetVal, TargetLen, TargetStat )
+    IF ( TargetStat == 0 .AND. TargetLen > 0 ) READ( TargetVal, * ) TargetElem
+    IF ( TargetElem > 0 .AND. Element % ElementIndex /= TargetElem ) RETURN
+
     !$OMP CRITICAL (DebugDumpCondensateWrite)
+    OPEN( NEWUNIT=dbgunit, FILE='condensate_last_element.log', ACCESS='SEQUENTIAL', &
+        FORM='FORMATTED', STATUS='REPLACE' )
+    WRITE(dbgunit,'(I0)') Element % ElementIndex
+    CLOSE(dbgunit)
+
     OPEN( NEWUNIT=dbgunit, FILE='condensate_debug.log', ACCESS='SEQUENTIAL', &
         FORM='FORMATTED', POSITION='APPEND', STATUS='UNKNOWN' )
     WRITE(dbgunit,'(A,1X,A,1X,I0,1X,A,1X,I0,1X,A,1X,I0)') 'ELEM', TRIM(Tag), &

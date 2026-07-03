@@ -140,38 +140,49 @@ jobs:
       # TEMPORARY (no-threadprivate branch diagnostic, revert when investigation
       # is closed): instead of the usual stress loop, hunt specifically for the
       # intermittent Step_stokes_heat_vec InvertMatrix (bubble-condensation)
-      # failure, with ELMER_DEBUG_CONDENSATE=1 dumping each element's bubble
-      # submatrix so the failing matrix can be diffed against the immediately
-      # preceding passing one. Stops as soon as that specific failure is
-      # caught; a norm-mismatch failure (the other known flake) is logged but
-      # does not stop the loop. Restore the normal 100-iteration stress test
-      # (see git history) once done.
+      # failure, then pin down that same element's matrix on a later success.
+      #
+      # Phase 1: loop with ELMER_DEBUG_CONDENSATE=1 (dumps every element with
+      # bubbles) until an InvertMatrix-specific failure is caught. The crash
+      # aborts the process mid-write, so the culprit element is identified via
+      # condensate_last_element.log, which every dump call overwrites just
+      # before attempting the condensation. A norm-mismatch failure (the other
+      # known flake) is logged but does not stop the loop.
+      # Phase 2: re-run with ELMER_DEBUG_CONDENSATE_ELEMENT=<culprit> set, so
+      # only that one element's matrix is recorded (tiny log), until a fully
+      # passing run captures it — giving a same-element fail/pass pair to diff.
+      #
+      # Restore the normal 100-iteration stress test (see git history) once done.
       - name: check
         id: run-ctest
         timeout-minutes: 150
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          export ELMER_DEBUG_CONDENSATE=1
           testdir=fem/tests/Step_stokes_heat_vec
           mkdir -p condensate_artifacts
           max_iter=300
           found=0
+          target_elem=""
+
+          echo "::group::Phase 1: hunting for InvertMatrix failure"
+          export ELMER_DEBUG_CONDENSATE=1
           for i in $(seq 1 "$max_iter"); do
-            rm -f "${testdir}/condensate_debug.log"
+            rm -f "${testdir}/condensate_debug.log" "${testdir}/condensate_last_element.log"
             if ctest . -R "^Step_stokes_heat_vec\$" --timeout 60 --output-on-failure \
                 > condensate_artifacts/iter_out.log 2>&1; then
-              [ -f "${testdir}/condensate_debug.log" ] && \
-                cp "${testdir}/condensate_debug.log" condensate_artifacts/last_pass.log
+              : # passing iteration, nothing to keep in phase 1
             else
               echo "--- iteration $i failed ---"
               cat condensate_artifacts/iter_out.log
-              cp condensate_artifacts/iter_out.log "condensate_artifacts/fail_iter_${i}_output.log"
-              [ -f "${testdir}/condensate_debug.log" ] && \
-                cp "${testdir}/condensate_debug.log" "condensate_artifacts/fail_iter_${i}.log"
               if grep -qiE "InvertMatrix|Matrix is singular|LU-decomposition" condensate_artifacts/iter_out.log; then
-                echo "Caught InvertMatrix failure at iteration $i"
-                [ -f condensate_artifacts/last_pass.log ] && \
-                  cp condensate_artifacts/last_pass.log condensate_artifacts/matched_pass.log
+                cp condensate_artifacts/iter_out.log condensate_artifacts/fail_output.log
+                if [ -f "${testdir}/condensate_last_element.log" ]; then
+                  target_elem=$(cat "${testdir}/condensate_last_element.log")
+                  echo "Caught InvertMatrix failure at iteration $i, culprit element $target_elem"
+                  cp "${testdir}/condensate_debug.log" condensate_artifacts/fail_full_dump.log
+                  grep -A5 -F " ${target_elem} ND " condensate_artifacts/fail_full_dump.log \
+                      | tail -6 > condensate_artifacts/fail_target_elem.log
+                fi
                 found=1
                 break
               else
@@ -179,14 +190,35 @@ jobs:
               fi
             fi
           done
+          unset ELMER_DEBUG_CONDENSATE
           rm -f condensate_artifacts/iter_out.log
-          echo "found=$found" >> "$GITHUB_OUTPUT"
-          if [ "$found" -eq 1 ]; then
-            echo "SUCCESS: captured a matched pass/fail bubble-matrix pair"
+          echo "::endgroup::"
+
+          if [ "$found" -eq 1 ] && [ -n "$target_elem" ]; then
+            echo "::group::Phase 2: waiting for element $target_elem to succeed"
+            export ELMER_DEBUG_CONDENSATE=1
+            export ELMER_DEBUG_CONDENSATE_ELEMENT="$target_elem"
+            matched=0
+            for j in $(seq 1 "$max_iter"); do
+              rm -f "${testdir}/condensate_debug.log"
+              if ctest . -R "^Step_stokes_heat_vec\$" --timeout 60 --output-on-failure \
+                  > condensate_artifacts/phase2_iter_out.log 2>&1; then
+                if [ -f "${testdir}/condensate_debug.log" ]; then
+                  cp "${testdir}/condensate_debug.log" condensate_artifacts/target_pass.log
+                  echo "Captured matching passing dump for element $target_elem at iteration $j"
+                  matched=1
+                  break
+                fi
+              fi
+            done
+            unset ELMER_DEBUG_CONDENSATE ELMER_DEBUG_CONDENSATE_ELEMENT
+            rm -f condensate_artifacts/phase2_iter_out.log
+            echo "::endgroup::"
+            test "$matched" -eq 1
           else
             echo "Did not reproduce an InvertMatrix failure in $max_iter iterations"
+            false
           fi
-          test "$found" -eq 1
 
       - name: upload condensate debug artifacts
         if: always()

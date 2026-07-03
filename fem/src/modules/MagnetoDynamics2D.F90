@@ -136,11 +136,25 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   LOGICAL :: Found
   TYPE(Element_t), POINTER :: Element
   REAL(KIND=dp) :: Norm, newton_eps
-  INTEGER :: i,j,k,n, nb, nd, t, Active, NonlinIter, iter, tind
+  INTEGER :: i,j,k,n, nb, nd, t, Active, NonlinIter, iter, tind, nthr
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Mesh_t),   POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: SolverParams
-  
+
+  ! Per-thread handle/cache storage for LocalMatrixHandles — NOT THREADPRIVATE
+  ! (Windows/GCC emutls bug), see no-threadprivate branch. PrevMaterial is a
+  ! POINTER that gets re-targeted every call, so it can't be an ASSOCIATE
+  ! name — referenced as HandlesState(tid) % PrevMaterial directly instead.
+  TYPE :: MagDyn2DHandles_t
+    TYPE(ValueHandle_t) :: SourceCoeff_h, CondCoeff_h, PermCoeff_h, &
+        RelPermCoeff_h, RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, nu_h
+    REAL(KIND=dp) :: Nu0 = 0.0_dp
+    LOGICAL :: HBCurve = .FALSE., HasReluctivityFunction = .FALSE.
+    INTEGER :: PrevElemInd = HUGE(1)
+    TYPE(ValueList_t), POINTER :: PrevMaterial => NULL()
+  END TYPE MagDyn2DHandles_t
+  TYPE(MagDyn2DHandles_t), ALLOCATABLE :: HandlesState(:)
+
   LOGICAL :: NewtonRaphson = .FALSE., CSymmetry, SkipDegenerate, &
       HandleAsm, MassAsm, ConstantMassInUse = .FALSE.
   LOGICAL :: SliceAverage, HasZirka
@@ -182,7 +196,13 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,Transient ) ! {{{
   IF( HandleAsm ) THEN
     CALL Info(Caller,'Performing handle version of bulk element assembly',Level=7)
   ELSE
-    CALL Info(Caller,'Performing legacy version of bulk element assembly',Level=7)      
+    CALL Info(Caller,'Performing legacy version of bulk element assembly',Level=7)
+  END IF
+
+  IF( .NOT. ALLOCATED( HandlesState ) ) THEN
+    nthr = 1
+    !$ nthr = omp_get_max_threads()
+    ALLOCATE( HandlesState(nthr) )
   END IF
 
   newton_eps = GetCReal(SolverParams, 'Newton epsilon', Found )
@@ -1075,28 +1095,39 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), DAMP(:,:), STIFF(:,:), FORCE(:), POT(:)
     REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
-    REAL(KIND=dp) :: Nu0, Nu, weight, SourceAtIp, CondAtIp, DetJ, Mu, MuDer, Babs
-    LOGICAL :: Stat,Found, HBCurve, HasReluctivityFunction
-    INTEGER :: t,p,q,k,m,allocstat, nudim
+    REAL(KIND=dp) :: Nu, weight, SourceAtIp, CondAtIp, DetJ, Mu, MuDer, Babs
+    LOGICAL :: Stat,Found
+    INTEGER :: t,p,q,k,m,allocstat, nudim, tid
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
-    TYPE(ValueList_t), POINTER :: Material, PrevMaterial => NULL()
+    TYPE(ValueList_t), POINTER :: Material
     REAL(KIND=dp) :: B_ip(2), Ht(nd,2), Bt(nd,2), Agrad(2), JAC(nd,nd), Alocal, &
             Permittivity(nd), P_ip, A_t_der(2,2), nu_tensor(2,2)
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     LOGICAL :: StrandedCoil
     REAL(KIND=dp), POINTER :: NuTensor(:,:)
-    TYPE(ValueHandle_t), SAVE :: SourceCoeff_h, CondCoeff_h, PermCoeff_h, &
-        RelPermCoeff_h, RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, nu_h
-    INTEGER :: PrevElemInd = HUGE(PrevElemInd)
-
-    SAVE HBCurve, Nu0, PrevMaterial, PrevElemInd, HasReluctivityFunction
-
-    !$omp threadprivate(Nu0, HBCurve, HasReluctivityFunction, PrevMaterial, &
-    !$omp               SourceCoeff_h, CondCoeff_h, PermCoeff_h, nu_h, RelPermCoeff_h, &
-    !$omp               RelucCoeff_h, Mag1Coeff_h, Mag2Coeff_h, CoilType_h, PrevElemInd)
-    
+    ! Handles/Nu0/HBCurve/HasReluctivityFunction/PrevElemInd live in parent
+    ! scope as HandlesState(tid); see ASSOCIATE below. PrevMaterial (POINTER,
+    ! re-targeted below) can't be an ASSOCIATE name — referenced directly.
 !------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ASSOCIATE( SourceCoeff_h => HandlesState(tid) % SourceCoeff_h, &
+        CondCoeff_h => HandlesState(tid) % CondCoeff_h, &
+        PermCoeff_h => HandlesState(tid) % PermCoeff_h, &
+        RelPermCoeff_h => HandlesState(tid) % RelPermCoeff_h, &
+        RelucCoeff_h => HandlesState(tid) % RelucCoeff_h, &
+        Mag1Coeff_h => HandlesState(tid) % Mag1Coeff_h, &
+        Mag2Coeff_h => HandlesState(tid) % Mag2Coeff_h, &
+        CoilType_h => HandlesState(tid) % CoilType_h, &
+        nu_h => HandlesState(tid) % nu_h, &
+        Nu0 => HandlesState(tid) % Nu0, &
+        HBCurve => HandlesState(tid) % HBCurve, &
+        HasReluctivityFunction => HandlesState(tid) % HasReluctivityFunction, &
+        PrevElemInd => HandlesState(tid) % PrevElemInd )
+
     NULLIFY(Basis, dBasisdx)
 
     ! The elements should be in growing order. Hence we initialize if we start the list.
@@ -1134,8 +1165,8 @@ CONTAINS
     IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 20
     
     Material => GetMaterial(Element)
-    IF( .NOT. ASSOCIATED( Material, PrevMaterial ) ) THEN
-      PrevMaterial => Material           
+    IF( .NOT. ASSOCIATED( Material, HandlesState(tid) % PrevMaterial ) ) THEN
+      HandlesState(tid) % PrevMaterial => Material
       HbCurve = ListCheckPresent(Material,'H-B Curve')
       HasReluctivityFunction = ListCheckPresent(Material,'Reluctivity Function')
     END IF
@@ -1331,6 +1362,8 @@ CONTAINS
     
 20  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element) !, VecAssembly=VecAsm)
     IF( .NOT. BasisFunctionsInUse .AND. ASSOCIATED(Basis) ) DEALLOCATE(Basis, dBasisdx)
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixHandles
 !------------------------------------------------------------------------------

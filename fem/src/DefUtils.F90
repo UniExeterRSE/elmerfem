@@ -112,12 +112,12 @@ MODULE DefUtils
 
    ! Per-thread scratch storage — NOT THREADPRIVATE; indexed by omp_get_thread_num()+1.
    ! Avoids the GCC/emutls bug: ALLOCATABLE THREADPRIVATE vars are shared on Windows.
-   TYPE, PRIVATE :: DefUtils_Store_t
+   TYPE :: DefUtils_Store_t
      INTEGER, ALLOCATABLE :: istore(:)
      INTEGER, ALLOCATABLE :: vistore(:)
      REAL(KIND=dp), ALLOCATABLE :: vstore(:)
    END TYPE DefUtils_Store_t
-   TYPE(DefUtils_Store_t), ALLOCATABLE, PRIVATE, TARGET :: Stores(:)
+   TYPE(DefUtils_Store_t), ALLOCATABLE, TARGET, SAVE :: Stores(:)
 
    TYPE(Element_t), POINTER :: CurrentElementThread => NULL()
    !$OMP THREADPRIVATE(CurrentElementThread)
@@ -237,7 +237,7 @@ CONTAINS
     IF (n > VSTORE_MAX_SIZE) THEN
       CALL Fatal('GetValueStore', 'Not enough memory allocated for store.')
     END IF
-    val => Stores(tid)%vstore
+    val => Stores(tid)%vstore(1:n)
   END FUNCTION GetValueStore
 
 !> Returns handle to the active solver

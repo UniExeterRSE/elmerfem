@@ -711,7 +711,8 @@ CONTAINS
             IF(j /= ngp) THEN
               CALL Fatal(Caller,'Expected '//I2S(j)//' gauss point for "Shearrate" got '//I2S(ngp))
             END IF
-            NSHandles(tid) % ShearVar % Values(NSHandles(tid) % ShearVar % Perm(i)+1:NSHandles(tid) % ShearVar % Perm(i+1)) = ss(1:ngp)
+            NSHandles(tid) % ShearVar % Values( &
+                NSHandles(tid) % ShearVar % Perm(i)+1 : NSHandles(tid) % ShearVar % Perm(i+1) ) = ss(1:ngp)
           ELSE IF( NSHandles(tid) % ShearVar % TYPE == Variable_on_elements ) THEN
             NSHandles(tid) % ShearVar % Values(NSHandles(tid) % ShearVar % Perm(i)) = SUM(ss(1:ngp)) / ngp
           END IF
@@ -885,7 +886,8 @@ CONTAINS
             IF(j /= ngp) THEN
               CALL Fatal(Caller,'Expected '//I2S(j)//' gauss point for "Viscosity" got '//I2S(ngp))
             END IF
-            NSHandles(tid) % ViscVar % Values(NSHandles(tid) % ViscVar % Perm(i)+1:NSHandles(tid) % ViscVar % Perm(i+1)) = ViscVec(1:ngp)
+            NSHandles(tid) % ViscVar % Values( &
+                NSHandles(tid) % ViscVar % Perm(i)+1 : NSHandles(tid) % ViscVar % Perm(i+1) ) = ViscVec(1:ngp)
           ELSE
             NSHandles(tid) % ViscVar % Values(NSHandles(tid) % ViscVar % Perm(i)) = SUM(ViscVec(1:ngp)) / ngp
           END IF

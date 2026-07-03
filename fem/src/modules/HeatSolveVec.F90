@@ -508,7 +508,45 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
    END IF
  END IF
    
-CONTAINS 
+CONTAINS
+
+!------------------------------------------------------------------------------
+!> Diagnostic-only: dump an element's bubble-condensation submatrix to a log
+!> file when ELMER_DEBUG_CONDENSATE=1 is set in the environment. Used to
+!> compare a passing vs. a failing run's bubble matrix bit-for-bit and confirm
+!> whether the intermittent Windows InvertMatrix failure in Step_stokes_heat_vec
+!> stems from floating-point summation-order noise rather than a data race.
+!> Remove once that investigation is closed out.
+!------------------------------------------------------------------------------
+  SUBROUTINE DebugDumpCondensate( Tag, Element, nd, nb, K, F )
+!------------------------------------------------------------------------------
+    CHARACTER(*), INTENT(IN) :: Tag
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, INTENT(IN) :: nd, nb
+    REAL(KIND=dp), INTENT(IN) :: K(:,:), F(:)
+!------------------------------------------------------------------------------
+    INTEGER :: i, j, dbgunit, EnvLen, EnvStat
+    CHARACTER(LEN=8) :: EnvVal
+!------------------------------------------------------------------------------
+    IF ( nb <= 0 ) RETURN
+    CALL GET_ENVIRONMENT_VARIABLE( 'ELMER_DEBUG_CONDENSATE', EnvVal, EnvLen, EnvStat )
+    IF ( EnvStat /= 0 .OR. TRIM(EnvVal) /= '1' ) RETURN
+
+    !$OMP CRITICAL (DebugDumpCondensateWrite)
+    OPEN( NEWUNIT=dbgunit, FILE='condensate_debug.log', ACCESS='SEQUENTIAL', &
+        FORM='FORMATTED', POSITION='APPEND', STATUS='UNKNOWN' )
+    WRITE(dbgunit,'(A,1X,A,1X,I0,1X,A,1X,I0,1X,A,1X,I0)') 'ELEM', TRIM(Tag), &
+        Element % ElementIndex, 'ND', nd, 'NB', nb
+    DO i = nd-nb+1, nd
+      WRITE(dbgunit,'(100ES25.16)') ( K(i,j), j=nd-nb+1,nd )
+    END DO
+    WRITE(dbgunit,'(100ES25.16)') ( F(i), i=nd-nb+1,nd )
+    FLUSH(dbgunit)
+    CLOSE(dbgunit)
+    !$OMP END CRITICAL (DebugDumpCondensateWrite)
+!------------------------------------------------------------------------------
+  END SUBROUTINE DebugDumpCondensate
+!------------------------------------------------------------------------------
 
 
   SUBROUTINE LocalNitscheBC(Element,n,BC,str)
@@ -753,8 +791,9 @@ CONTAINS
     END IF
       
     IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+    CALL DebugDumpCondensate( 'Vec', Element, nd, nb, STIFF, FORCE )
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
-    
+
 10  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
 
     END ASSOCIATE
@@ -1012,8 +1051,9 @@ CONTAINS
     END DO
     
     IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element)
+    CALL DebugDumpCondensate( 'Std', Element, nd, nb, STIFF, FORCE )
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
-    
+
 20  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element,VecAssembly=VecAsm)
 
     END ASSOCIATE

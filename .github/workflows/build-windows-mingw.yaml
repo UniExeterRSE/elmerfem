@@ -70,6 +70,30 @@ jobs:
             ${{ matrix.mpi == 'with' && 'parmetis:p' || 'openblas:p' }}
             mumps:p
             suitesparse:p
+            qt6-declarative:p
+            qwt-qt6:p
+            vtk:p
+            adios2:p
+            anari-sdk:p 
+            boost:p
+            cgns:p
+            cli11:p
+            eigen3:p
+            exprtk:p
+            fast_float:p
+            ffmpeg:p
+            gl2ps:p
+            liblas:p
+            libmariadbclient:p
+            netcdf:p 
+            openslide:p
+            openvdb:p
+            pdal:p
+            scnlib:p
+            seacas:p
+            unixodbc:p
+            utf8cpp:p
+            opencascade:p
             ${{ matrix.external-packages }}
 
       - name: install MSMPI
@@ -113,12 +137,12 @@ jobs:
             -DWITH_OpenMP=ON \
             -DWITH_LUA=ON \
             -DCMAKE_C_FLAGS="-Wno-error=incompatible-pointer-types" \
-            -DWITH_ELMERGUI=OFF \
-            -DWITH_QT6=OFF \
-            -DWITH_VTK=OFF \
-            -DWITH_OCC=OFF \
+            -DWITH_ELMERGUI=ON \
+            -DWITH_QT6=ON \
+            -DWITH_VTK=ON \
+            -DWITH_OCC=ON \
             -DWITH_MATC=ON \
-            -DWITH_PARAVIEW=OFF \
+            -DWITH_PARAVIEW=ON \
             -DCREATE_PKGCONFIG_FILE=ON \
             ${{ matrix.external-cmake-flags }} \
             ..
@@ -137,93 +161,57 @@ jobs:
           cd ${GITHUB_WORKSPACE}/build
           cmake --install .
 
-      # TEMPORARY (no-threadprivate branch diagnostic, revert when investigation
-      # is closed): instead of the usual stress loop, hunt specifically for the
-      # intermittent Step_stokes_heat_vec InvertMatrix (bubble-condensation)
-      # failure, then pin down that same element's matrix on a later success.
-      #
-      # Phase 1: loop with ELMER_DEBUG_CONDENSATE=1 (dumps every element with
-      # bubbles) until an InvertMatrix-specific failure is caught. The crash
-      # aborts the process mid-write, so the culprit element is identified via
-      # condensate_last_element.log, which every dump call overwrites just
-      # before attempting the condensation. A norm-mismatch failure (the other
-      # known flake) is logged but does not stop the loop.
-      # Phase 2: re-run with ELMER_DEBUG_CONDENSATE_ELEMENT=<culprit> set, so
-      # only that one element's matrix is recorded (tiny log), until a fully
-      # passing run captures it — giving a same-element fail/pass pair to diff.
-      #
-      # Restore the normal 100-iteration stress test (see git history) once done.
       - name: check
         id: run-ctest
         timeout-minutes: 150
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
         run: |
           cd ${GITHUB_WORKSPACE}/build
-          testdir=fem/tests/Step_stokes_heat_vec
-          mkdir -p condensate_artifacts
-          max_iter=300
-          found=0
-          target_elem=""
+          ctest . \
+            -LE slow \
+            --timeout 600
 
-          echo "::group::Phase 1: hunting for InvertMatrix failure"
-          export ELMER_DEBUG_CONDENSATE=1
-          for i in $(seq 1 "$max_iter"); do
-            rm -f "${testdir}/condensate_debug.log" "${testdir}/condensate_last_element.log"
-            if ctest . -R "^Step_stokes_heat_vec\$" --timeout 60 --output-on-failure \
-                > condensate_artifacts/iter_out.log 2>&1; then
-              : # passing iteration, nothing to keep in phase 1
+      - name: re-run tests
+        if: always() && (steps.run-ctest.outcome == 'failure')
+        timeout-minutes: 60
+        env:
+          CTEST_OUTPUT_ON_FAILURE: 1
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          # get names of failed tests and strip potential "_np*" suffix
+          failed_tests=($(ctest . -N --rerun-failed | grep -E "Test\s+#.*" | awk '{print $3}' | sed -e 's/_np[0-9]*$//g'))
+          # remove duplicate test names
+          unique_failed_tests=($(echo "${failed_tests[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+          for test in "${unique_failed_tests[@]}"; do
+            # check if test is from fem or ElmerIce
+            if [ -d fem/tests/${test} ]; then
+              test_root=fem/tests
             else
-              echo "--- iteration $i failed ---"
-              cat condensate_artifacts/iter_out.log
-              if grep -qiE "InvertMatrix|Matrix is singular|LU-decomposition" condensate_artifacts/iter_out.log; then
-                cp condensate_artifacts/iter_out.log condensate_artifacts/fail_output.log
-                if [ -f "${testdir}/condensate_last_element.log" ]; then
-                  target_elem=$(cat "${testdir}/condensate_last_element.log")
-                  echo "Caught InvertMatrix failure at iteration $i, culprit element $target_elem"
-                  cp "${testdir}/condensate_debug.log" condensate_artifacts/fail_full_dump.log
-                  grep -A5 -F " ${target_elem} ND " condensate_artifacts/fail_full_dump.log \
-                      | tail -6 > condensate_artifacts/fail_target_elem.log
-                fi
-                found=1
-                break
-              else
-                echo "Non-InvertMatrix failure at iteration $i (likely the norm-mismatch mode); continuing"
-              fi
+              test_root=elmerice/Tests
             fi
-          done
-          unset ELMER_DEBUG_CONDENSATE
-          rm -f condensate_artifacts/iter_out.log
-          echo "::endgroup::"
-
-          if [ "$found" -eq 1 ] && [ -n "$target_elem" ]; then
-            echo "::group::Phase 2: waiting for element $target_elem to succeed"
-            export ELMER_DEBUG_CONDENSATE=1
-            export ELMER_DEBUG_CONDENSATE_ELEMENT="$target_elem"
-            matched=0
-            for j in $(seq 1 "$max_iter"); do
-              rm -f "${testdir}/condensate_debug.log"
-              if ctest . -R "^Step_stokes_heat_vec\$" --timeout 60 --output-on-failure \
-                  > condensate_artifacts/phase2_iter_out.log 2>&1; then
-                if [ -f "${testdir}/condensate_debug.log" ]; then
-                  cp "${testdir}/condensate_debug.log" condensate_artifacts/target_pass.log
-                  echo "Captured matching passing dump for element $target_elem at iteration $j"
-                  matched=1
-                  break
-                fi
-              fi
-            done
-            unset ELMER_DEBUG_CONDENSATE ELMER_DEBUG_CONDENSATE_ELEMENT
-            rm -f condensate_artifacts/phase2_iter_out.log
+            echo "::group::Content of ${test_root}/${test}"
+            echo ---- Files ----
+            ls -Rl ${test_root}/${test}
+            if [ -f ${test_root}/${test}/test-stderr*.log ]; then
+              err_logs=($(ls ${test_root}/${test}/test-stderr*.log))
+              for err_log in "${err_logs[@]}"; do
+                echo ---- Content of ${err_log} ----
+                cat ${err_log}
+              done
+            fi
+            if [ -f ${test_root}/${test}/test-stdout*.log ]; then
+              out_logs=($(ls ${test_root}/${test}/test-stdout*.log))
+              for out_log in "${out_logs[@]}"; do
+                echo ---- Content of ${out_log} ----
+                cat ${out_log}
+              done
+            fi
             echo "::endgroup::"
-            test "$matched" -eq 1
-          else
-            echo "Did not reproduce an InvertMatrix failure in $max_iter iterations"
-            false
-          fi
-
-      - name: upload condensate debug artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: condensate-debug-logs-${{ matrix.dependencies }}-${{ matrix.mpi }}
-          path: build/condensate_artifacts/
-          if-no-files-found: warn
+          done
+          echo "::group::Re-run failing tests"
+          ctest --rerun-failed --output-on-failure --timeout 180 || true
+          echo "::endgroup::"
+          echo "::group::Log from these tests"
+          [ ! -f Testing/Temporary/LastTest.log ] || cat Testing/Temporary/LastTest.log
+          echo "::endgroup::"

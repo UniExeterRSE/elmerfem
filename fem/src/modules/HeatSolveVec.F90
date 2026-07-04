@@ -258,7 +258,7 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
 
   Temperature => Solver % Variable % Values
   TempPerm => Solver % Variable % Perm
-   
+
   DB = GetLogical( Params,'DG Reduced Basis',Found ) 
   DG = GetLogical( Params,'Discontinuous Galerkin',Found ) 
 
@@ -381,17 +381,22 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
       END IF
     END BLOCK
 
-    !!OMP PARALLEL &
-    !!OMP SHARED(Active, Solver, nColours, VecAsm, DiffuseGray, RadiatorPowers ) &
-    !!OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles) & 
-    !!OMP REDUCTION(+:totelem) DEFAULT(NONE)
-    InitHandles = .TRUE. 
+    ! DiffuseGray is a per-element out-parameter of LocalMatrixBC (set, then
+    ! immediately read back here to decide whether to also call
+    ! LocalMatrixDiffuseGray for the same element) — it must be PRIVATE, not
+    ! SHARED, or one thread's read races against another thread's write for
+    ! a completely different element.
+    !$OMP PARALLEL &
+    !$OMP SHARED(Active, Solver, nColours, VecAsm, RadiatorPowers ) &
+    !$OMP PRIVATE(t, Element, n, nd, nb, col, InitHandles, DiffuseGray) &
+    !$OMP REDUCTION(+:totelem) DEFAULT(NONE)
+    InitHandles = .TRUE.
     DO col=1,nColours
-      !!OMP SINGLE
+      !$OMP SINGLE
       CALL Info(Caller,'Assembly of boundary colour: '//I2S(col),Level=10)
       Active = GetNOFBoundaryActive(Solver)
-      !!OMP END SINGLE      
-      !!OMP DO
+      !$OMP END SINGLE
+      !$OMP DO
       DO t=1,Active
         Element => GetBoundaryElement(t)
         totelem = totelem + 1
@@ -406,9 +411,9 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
           END IF
         END IF
       END DO
-      !!OMP END DO
+      !$OMP END DO
     END DO
-    !!OMP END PARALLEL
+    !$OMP END PARALLEL
     
     IF( DG ) THEN
       BLOCK
@@ -1460,9 +1465,12 @@ CONTAINS
     nf_imp = Element % BoundaryInfo % RadiationFactors % NumberOfImplicitFactors      
     IF( nf_imp == 0 ) nf_imp = nf
 
+    ! Temperature/TempPerm are shared, host-associated pointers already set
+    ! once (serially) at the top of HeatSolver — reassigning them here again
+    ! on every call, from every thread, is a race on the shared pointer
+    ! descriptor itself (not just its target). ForceVector is a local
+    ! variable in this subroutine, so assigning it is thread-safe.
     ForceVector => Solver % Matrix % rhs
-    Temperature => Solver % Variable % Values
-    TempPerm => Solver % Variable % Perm
 
     Emis1 = Emiss(bindex)
     Refl1 = Reflect(bindex)
@@ -1592,8 +1600,14 @@ CONTAINS
 
             ! Integrate the contribution of surface j over surface j and add to global matrix
             !------------------------------------------------------------------------------                    
+            ! ForceVector is shared across boundary elements/threads (no
+            ! coloring guarantees disjoint nodes here — RadElement can be
+            ! anywhere in the mesh), and unlike DefaultUpdateEquations this
+            ! manual scatter has no built-in atomic protection, so add it
+            ! explicitly. AddToMatrixElement is already atomic internally
+            ! (CRS_AddToMatrixElement uses !$OMP ATOMIC).
             IF( Dg ) THEN
-              CALL DgRadiationIndexes(RadElement,k,ElemInds2,.TRUE.)                              
+              CALL DgRadiationIndexes(RadElement,k,ElemInds2,.TRUE.)
 
               DO p=1,n
                 k1 = TempPerm( ElemInds(p))
@@ -1601,15 +1615,17 @@ CONTAINS
                   k2 = TempPerm( ElemInds2(q) )
                   CALL AddToMatrixElement( Solver % Matrix,k1,k2,RadCoeffAtIp*Base(p)/k )
                 END DO
+                !$OMP ATOMIC UPDATE
                 ForceVector(k1) = ForceVector(k1) + RadLoadAtIp * Base(p)
               END DO
             ELSE
               DO p=1,n
-                k1 = TempPerm( Element % NodeIndexes(p) )            
+                k1 = TempPerm( Element % NodeIndexes(p) )
                 DO q=1,k
                   k2 = TempPerm( RadElement % NodeIndexes(q) )
                   CALL AddToMatrixElement( Solver % Matrix,k1,k2,RadCoeffAtIp*Base(p)/k )
                 END DO
+                !$OMP ATOMIC UPDATE
                 ForceVector(k1) = ForceVector(k1) + RadLoadAtIp * Base(p)
               END DO
             END IF
@@ -1706,6 +1722,9 @@ CONTAINS
         INTEGER :: ElemPerm(27)
         ElemPerm(1:n) = PostFlux % Perm(Element % NodeIndexes)
         IF(ALL(ElemPerm(1:n) > 0 )) THEN
+          ! Nodes are shared between adjacent boundary elements/threads; these
+          ! are array-section updates so ATOMIC doesn't apply — use CRITICAL.
+          !$OMP CRITICAL (HeatSolveDiffuseGrayPostFields)
           PostWeight % Values(ElemPerm(1:n)) = PostWeight % Values(ElemPerm(1:n)) + Base(1:n)
           PostFlux % Values(ElemPerm(1:n)) = PostFlux % Values(ElemPerm(1:n)) + Fact(1) * Base(1:n)
           IF( Spectral ) THEN
@@ -1713,6 +1732,7 @@ CONTAINS
             PostAbs % Values(ElemPerm(1:n)) = PostAbs % Values(ElemPerm(1:n)) + Fact(3) * Base(1:n)
             PostTemp % Values(ElemPerm(1:n)) = PostTemp % Values(ElemPerm(1:n)) + Fact(4) * Base(1:n)
           END IF
+          !$OMP END CRITICAL (HeatSolveDiffuseGrayPostFields)
         END IF
       END BLOCK
     END IF
@@ -1733,9 +1753,13 @@ CONTAINS
         k2 = TempPerm( pIndexes(q) )
         CALL AddToMatrixElement( Solver % Matrix,k1,k2,STIFF(p,q))
       END DO
+      ! Own element's nodes, but boundary colouring is not guaranteed to be
+      ! active (nColours defaults to 1), so neighboring elements can still
+      ! share nodes — atomic protection needed, same as UpdateGlobalForce.
+      !$OMP ATOMIC UPDATE
       ForceVector(k1) = ForceVector(k1) + FORCE(p)
     END DO
-      
+
   END SUBROUTINE LocalMatrixDiffuseGray
 !------------------------------------------------------------------------------
 

@@ -4192,14 +4192,25 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp) :: MinLim, MaxLim, MinV, MaxV, V
     LOGICAL :: UseAdapt, Found,ElementalRule
     INTEGER :: i,j,n,ElementalNp(8),prevVisited = -1
-    LOGICAL :: Debug, InitDone, pRef, IsBC, prevIsBC, AdaptSplit, UseNameSpace
+    LOGICAL :: Debug, InitDone, pRef, IsBC, prevIsBC, AdaptSplit, UseNameSpace, EdgePRef
     INTEGER :: EdgeBasisDegree
     REAL(KIND=dp) :: ElemPhi(27)
     LOGICAL :: ElemCut(8)
     TYPE(Nodes_t) :: ElemNodes
-    
+
+    ! NOTE: pRef is deliberately NOT in the SAVE list. It is element-dependent
+    ! and is computed fresh on every call (see below, after the init block).
+    ! It used to be SAVEd shared state written only inside the init block;
+    ! when several threads hit their first element concurrently they all
+    ! re-ran the init, which transiently toggled the shared pRef
+    ! .FALSE. -> .TRUE. while other threads were already reading it for the
+    ! rule selection at the bottom of this function. A p-element could then
+    ! rarely be integrated with the non-p rule: slightly wrong local matrix,
+    ! or - with too few points for the bubble basis - a singular block in
+    ! CondensateP (the intermittent "LUDecomp: Matrix is singular" failure
+    ! in e.g. Step_stokes_heat_vec / SD_Step_stokes_heat_vec).
     SAVE prevSolver, UseAdapt, MinLim, MaxLim, IntegVar, AdaptOrder, AdaptNp, RelOrder, Np, &
-        ElementalRule, ElementalNp, prevVisited, pRef, prevIsBC, AdaptSplit, ElemPhi, ElemNodes
+        ElementalRule, ElementalNp, prevVisited, EdgePRef, prevIsBC, AdaptSplit, ElemPhi, ElemNodes
 
     IF( PRESENT( Solver ) ) THEN
       pSolver => Solver
@@ -4281,12 +4292,16 @@ END FUNCTION SearchNodeL
       
       
       pRef = .FALSE.
-      
+
       EdgeBasisDegree = 0
       IF( PRESENT(EdgeBasis) ) THEN
         IF( EdgeBasis ) THEN
 
           CALL EdgeElementStyle(pSolver % Values, pRef, BasisDegree=EdgeBasisDegree)
+          ! Store the solver-constant edge-basis reference-element flag for
+          ! the per-call pRef selection below (single same-value store; the
+          ! local pRef is used within this init block only).
+          EdgePRef = pRef
 
           ! If elemental rule has not been given then use special edge basis rules
           ! to overrule any other rule for the gauss points. 
@@ -4316,20 +4331,28 @@ END FUNCTION SearchNodeL
             CALL Fatal('GaussPointsAdapt','Adaptive rules not yet compatible with EdgeBasis')
           END IF
         END IF
-      ELSE
-        ! Apart from edge elements we may have p-elements defined.
-        ! If not specified check from the current solver. 
-        IF( PRESENT(pReferenceElement) ) THEN
-          pRef = pReferenceElement 
-        ELSE
-          pRef = isActivePElement(Element,pSolver)
-        END IF
       END IF
-      
+
       prevSolver => pSolver
       prevVisited = pSolver % TimesVisited
     END IF
-    
+
+    ! Select the reference-element style for THIS call/element. Computed as a
+    ! local on every call - never cached in shared SAVE state - to stay
+    ! race-free when concurrent threads re-run the init block above (see the
+    ! NOTE at the SAVE statement). isActivePElement is only a flag check plus
+    ! a small array scan, so this costs next to nothing per element.
+    IF( PRESENT(EdgeBasis) ) THEN
+      pRef = .FALSE.
+      IF( EdgeBasis ) pRef = EdgePRef
+    ELSE IF( PRESENT(pReferenceElement) ) THEN
+      pRef = pReferenceElement
+    ELSE
+      ! Apart from edge elements we may have p-elements defined.
+      ! If not specified check from the current solver.
+      pRef = isActivePElement(Element,pSolver)
+    END IF
+
     IF( ElementalRule ) THEN
       ! Elemental explicit rule always has the prevalance
       Np = ElementalNp( Element % TYPE % ElementCode / 100 )

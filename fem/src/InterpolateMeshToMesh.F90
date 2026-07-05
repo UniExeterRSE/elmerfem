@@ -1829,15 +1829,23 @@ CONTAINS
     tid = 1
     !$ tid = omp_get_thread_num() + 1
 
+    ! Unlike bulk assembly, boundary assembly has no serial "warm-up" element
+    ! that resolves shared setup before the parallel loop starts, so every
+    ! thread can reach this function's very first call at once. The unguarded
+    ! "IF (.NOT. ALLOCATED(States))" fast-path read this used to have (before
+    ! ever entering the critical section) is a classic double-checked-locking
+    ! race: one thread can observe States as allocated, from another thread's
+    ! write, before that allocation's contents are actually visible to it —
+    ! especially under -O3 reordering. Always taking the critical section here
+    ! is the safe fix; the cost is negligible next to the ElementInfo/LuSolve
+    ! work this routine already does per call.
+    !$OMP CRITICAL (Ip2DgFieldInElementInit)
     IF( .NOT. ALLOCATED( States ) ) THEN
-      !$OMP CRITICAL (Ip2DgFieldInElementInit)
-      IF( .NOT. ALLOCATED( States ) ) THEN
-        nthr = 1
-        !$ nthr = omp_get_max_threads()
-        ALLOCATE( States(nthr) )
-      END IF
-      !$OMP END CRITICAL (Ip2DgFieldInElementInit)
+      nthr = 1
+      !$ nthr = omp_get_max_threads()
+      ALLOCATE( States(nthr) )
     END IF
+    !$OMP END CRITICAL (Ip2DgFieldInElementInit)
 
     ! Basis/MASS/LOAD are whole-allocatable components that get allocated
     ! below (first touch per thread) — an ASSOCIATE name never inherits the

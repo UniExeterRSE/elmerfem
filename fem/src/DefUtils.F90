@@ -178,15 +178,26 @@ CONTAINS
   
   SUBROUTINE EnsureStores()
     INTEGER :: nthr
+    ! The "IF (.NOT. ALLOCATED(Stores))" fast-path read used to happen BEFORE
+    ! entering the critical section below. That is an unsynchronized
+    ! double-checked-locking read: a thread can observe Stores as allocated,
+    ! from another thread's write, before that allocation's contents are
+    ! actually visible to it (especially under -O3 reordering). Some element
+    ! loops (e.g. HeatSolveVec's boundary assembly) have no serial "warm-up"
+    ! element before the parallel region starts, so every thread can reach
+    ! this function's very first call at once, keeping the race window
+    ! reliably open. Always taking the critical section is the safe fix
+    ! (see the analogous fix to Ip2DgFieldInElementInit in
+    ! InterpolateMeshToMesh.F90, confirmed by test to resolve a ~14% crash
+    ! rate in IpVariable4); the cost is negligible next to the per-element
+    ! work GetIndexStore/GetPermIndexStore callers already do.
+    !$OMP CRITICAL
     IF (.NOT. ALLOCATED(Stores)) THEN
-      !$OMP CRITICAL
-      IF (.NOT. ALLOCATED(Stores)) THEN
-        nthr = 1
-        !$ nthr = OMP_GET_MAX_THREADS()
-        ALLOCATE(Stores(nthr))
-      END IF
-      !$OMP END CRITICAL
+      nthr = 1
+      !$ nthr = OMP_GET_MAX_THREADS()
+      ALLOCATE(Stores(nthr))
     END IF
+    !$OMP END CRITICAL
   END SUBROUTINE EnsureStores
 
   FUNCTION GetIndexStore() RESULT(ind)

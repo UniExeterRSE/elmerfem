@@ -4425,7 +4425,14 @@ END FUNCTION SearchNodeL
       IF( .NOT. ( MaxV < MinLim .OR. MinV > MaxLim ) ) THEN
 
         IF( AdaptSplit ) THEN
-          ElemPhi(1:n) = ElemPhi(1:n) - MinLim 
+          ! THREADING: this adaptive-split branch is SERIAL-ONLY. ElemNodes
+          ! (below) and the PieceElement/IPtmp/PieceNodes SAVEd scratch in the
+          ! inner BLOCK are shared across calls, so calling this from an OMP
+          ! parallel assembly loop would race. Currently safe only because its
+          ! solver (ModelPDEhandle/AdvDiffSolver) assembles serially. Rework
+          ! this scratch to per-call locals before using adaptive-split with a
+          ! threaded (*Vec-style) solver. See the NOTE at the SAVE statement.
+          ElemPhi(1:n) = ElemPhi(1:n) - MinLim
           IF(.NOT. ASSOCIATED(ElemNodes % x)) THEN
             ALLOCATE(ElemNodes % x(2*n),ElemNodes % y(2*n), ElemNodes % z(2*n))
           END IF

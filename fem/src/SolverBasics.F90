@@ -4188,7 +4188,7 @@ END FUNCTION SearchNodeL
     CHARACTER(:), ALLOCATABLE :: VarName, GaussDef
     TYPE(Solver_t), POINTER :: pSolver, prevSolver => NULL()
     TYPE(Variable_t), POINTER :: IntegVar
-    INTEGER :: AdaptOrder, AdaptNp, Np, RelOrder
+    INTEGER :: AdaptOrder, AdaptNp, Np, RelOrder, BaseNp, BaseRelOrder
     REAL(KIND=dp) :: MinLim, MaxLim, MinV, MaxV, V
     LOGICAL :: UseAdapt, Found,ElementalRule
     INTEGER :: i,j,n,ElementalNp(8),prevVisited = -1
@@ -4198,9 +4198,12 @@ END FUNCTION SearchNodeL
     LOGICAL :: ElemCut(8)
     TYPE(Nodes_t) :: ElemNodes
 
-    ! NOTE: pRef is deliberately NOT in the SAVE list. It is element-dependent
-    ! and is computed fresh on every call (see below, after the init block).
-    ! It used to be SAVEd shared state written only inside the init block;
+    ! NOTE: pRef, Np, RelOrder and ElemPhi are deliberately NOT in the SAVE
+    ! list. They are element-dependent (written per element in the rule
+    ! selection at the bottom of this function) and must be per-call locals so
+    ! that concurrent threads each get their own copy.
+    !
+    ! pRef used to be SAVEd shared state written only inside the init block;
     ! when several threads hit their first element concurrently they all
     ! re-ran the init, which transiently toggled the shared pRef
     ! .FALSE. -> .TRUE. while other threads were already reading it for the
@@ -4209,8 +4212,27 @@ END FUNCTION SearchNodeL
     ! or - with too few points for the bubble basis - a singular block in
     ! CondensateP (the intermittent "LUDecomp: Matrix is singular" failure
     ! in e.g. Step_stokes_heat_vec / SD_Step_stokes_heat_vec).
-    SAVE prevSolver, UseAdapt, MinLim, MaxLim, IntegVar, AdaptOrder, AdaptNp, RelOrder, Np, &
-        ElementalRule, ElementalNp, prevVisited, EdgePRef, prevIsBC, AdaptSplit, ElemPhi, ElemNodes
+    !
+    ! Np and RelOrder are the same hazard class: they hold a solver-level
+    ! default (captured once during init) that is then overwritten per element
+    ! for the elemental / adaptive integration rules. The persistent default
+    ! lives in the SAVEd BaseNp/BaseRelOrder; the per-call Np/RelOrder are
+    ! re-seeded from those after the init block on every call. ElemPhi is
+    ! pure per-element scratch (nodal values of the adaptive variable).
+    !
+    ! REMAINING HAZARD (not fixed here): the "Adaptive Integration Split"
+    ! sub-branch below still uses SAVEd scratch with shared state - ElemNodes
+    ! (POINTER components, lazy-allocated) and, in its inner BLOCK,
+    ! PieceElement / IPtmp / PieceNodes. This 2D-only path is exercised for
+    ! correctness by the ModelPDEipsplit test, but only serially: its solver
+    ! (ModelPDEhandle / AdvDiffSolver) has no !$OMP PARALLEL assembly, so the
+    ! SAVEd scratch is never actually contended there. It remains latently
+    ! thread-unsafe and would race if a threaded (*Vec-style) solver ever used
+    ! Adaptive Integration Split; rework it to per-call scratch before doing
+    ! so. ElemNodes is left SAVE here (its POINTER components would leak on
+    ! every call as a plain non-SAVE local) pending that rework.
+    SAVE prevSolver, UseAdapt, MinLim, MaxLim, IntegVar, AdaptOrder, AdaptNp, BaseRelOrder, BaseNp, &
+        ElementalRule, ElementalNp, prevVisited, EdgePRef, prevIsBC, AdaptSplit, ElemNodes
 
     IF( PRESENT( Solver ) ) THEN
       pSolver => Solver
@@ -4241,10 +4263,10 @@ END FUNCTION SearchNodeL
         END IF
       END IF
                     
-      RelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
+      BaseRelOrder = ListGetInteger( pSolver % Values,'Relative Integration Order',Found )
       AdaptNp = 0
       AdaptSplit = .FALSE.
-      Np = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
+      BaseNp = ListGetInteger( pSolver % Values,'Number of Integration Points',Found )
 
       ! Elemental explicit rule will dominate over all other rules
       GaussDef = ListGetString( pSolver % Values,'Element Integration Points',ElementalRule )
@@ -4306,11 +4328,11 @@ END FUNCTION SearchNodeL
           ! If elemental rule has not been given then use special edge basis rules
           ! to overrule any other rule for the gauss points. 
           IF(.NOT. ElementalRule ) THEN
-            ! We can alter between the two explicit rules of edge basis using relative integration order. 
-            IF( RelOrder /= 0 ) THEN
-              IF( RelOrder == 1 .AND. EdgeBasisDegree == 1 ) THEN
+            ! We can alter between the two explicit rules of edge basis using relative integration order.
+            IF( BaseRelOrder /= 0 ) THEN
+              IF( BaseRelOrder == 1 .AND. EdgeBasisDegree == 1 ) THEN
                 EdgeBasisDegree = 2
-              ELSE IF( RelOrder == -1 .AND. EdgeBasisDegree == 2 ) THEN
+              ELSE IF( BaseRelOrder == -1 .AND. EdgeBasisDegree == 2 ) THEN
                 EdgeBasisDegree = 1
               ELSE
                 CALL Warn('GaussPointsAdapt','Relative integration order does not have any effect for Edge Basis')
@@ -4352,6 +4374,13 @@ END FUNCTION SearchNodeL
       ! If not specified check from the current solver.
       pRef = isActivePElement(Element,pSolver)
     END IF
+
+    ! Re-seed the per-call rule parameters from the solver-level defaults
+    ! captured during init. These may be overwritten per element just below;
+    ! keeping them as call-locals (seeded from the SAVEd base each call)
+    ! avoids threads clobbering each other's rule selection.
+    Np = BaseNp
+    RelOrder = BaseRelOrder
 
     IF( ElementalRule ) THEN
       ! Elemental explicit rule always has the prevalance

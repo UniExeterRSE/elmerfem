@@ -4245,8 +4245,31 @@ END FUNCTION SearchNodeL
    
     InitDone = ASSOCIATED( pSolver, prevSolver ) .AND. &
         ( prevVisited == pSolver % TimesVisited ) .AND. (.NOT. (IsBC .NEQV. PrevIsBC) )
-    
+
     IF( .NOT. InitDone ) THEN
+      ! Unsynchronized double-checked-lock, same anti-pattern already fixed
+      ! elsewhere this session (EnsureStores, Ip2DgFieldInElement): the fast
+      ! InitDone check above happens with no lock, so several threads hitting
+      ! their first element of a parallel assembly concurrently (no serial
+      ! warm-up call exists before e.g. StatElecSolve's BulkAssembly) can all
+      ! enter this block together. Unlike the already-fixed pRef/Np/RelOrder
+      ! hazard, the danger here is not that the *values* differ across
+      ! threads (for a plain SIF with no adaptive/elemental/namespace keys
+      ! they are deterministic) -- it is that nothing orders or flushes the
+      ! writes to BaseNp/BaseRelOrder/ElementalRule/UseAdapt/MinLim/MaxLim/
+      ! EdgePRef/ElementalNp/AdaptNp/AdaptOrder/AdaptSplit relative to the
+      ! terminal "prevSolver => pSolver" / "prevVisited = ..." publish below.
+      ! A third thread can observe InitDone flip to TRUE (via those two
+      ! writes becoming visible) while an earlier field is still stale or
+      ! mid-write under compiler/CPU store reordering, then read garbage into
+      ! the per-element rule selection just below this block. Re-checking
+      ! InitDone inside the critical section restores real double-checked
+      ! locking: cheap in the common (already-initialized) case, since the
+      ! unlocked fast path above still avoids the lock entirely once done.
+      !$OMP CRITICAL (GaussPointsAdaptInit)
+      InitDone = ASSOCIATED( pSolver, prevSolver ) .AND. &
+          ( prevVisited == pSolver % TimesVisited ) .AND. (.NOT. (IsBC .NEQV. PrevIsBC) )
+      IF( .NOT. InitDone ) THEN
       PrevIsBC = IsBC
 
       IF(IsBC ) THEN
@@ -4357,6 +4380,8 @@ END FUNCTION SearchNodeL
 
       prevSolver => pSolver
       prevVisited = pSolver % TimesVisited
+      END IF
+      !$OMP END CRITICAL (GaussPointsAdaptInit)
     END IF
 
     ! Select the reference-element style for THIS call/element. Computed as a

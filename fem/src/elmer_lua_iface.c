@@ -46,7 +46,6 @@
 #include "lauxlib.h"
 #include "lualib.h"
 
-
 static void stackDump(lua_State *L) {
   int i;
   int top = lua_gettop(L);

@@ -63,6 +63,7 @@ public :: lua_init, lua_close, lua_addfun, luaL_checkinteger, luaL_checknumber, 
     luaL_checkstring, lua_eval_f, lua_popnumber, lua_getnumber, lua_tolstring, &
     check_error, lua_getusertable, lua_poptensor, lua_popstring, lua_exec_fun, &
     lua_popvector
+! NOTE: lua_set_type removed — it patched internal Lua state to mask nil lookups
 
 !-Interfaces-{{{----------------------------------------------------------------
 interface ! 
@@ -240,6 +241,12 @@ function lua_tolstring(L, n, slen) result(sp)
 
   sp => null()
 
+  ! C lua_tolstring leaves *len untouched when the value at n is not a string
+  ! (e.g. nil, as produced by a '#var=value' statement line). Initialize so a
+  ! non-string yields length 0 instead of stack garbage — otherwise callers
+  ! (lua_popstring -> TrimLuaExpression) copy matcstr(1:garbage) and corrupt memory.
+  slen = 0
+
   c_s = lua_tolstring_c(L, n, slen)
   if ( slen <= 0 ) return
 
@@ -393,8 +400,12 @@ subroutine check_error(L, lstat)
   integer(kind=c_int) :: slen
   if (lstat /= 0) then
     s => lua_tolstring(L%L, -1, slen)
-    print *, 'Caught LUA error:', s(1:slen)
-    call lua_pop(L%L,1)
+    if (slen > 0) then
+      print *, 'FATAL Lua error: ', s(1:slen)
+    else
+      print *, 'FATAL Lua error (no message available)'
+    end if
+    call lua_pop(L%L, 1)
     ERROR STOP 1
   end if
 end subroutine

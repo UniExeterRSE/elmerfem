@@ -1239,7 +1239,13 @@ CONTAINS
               character(kind=c_char), dimension(*) :: locale
             END SUBROUTINE  setlocale
           END INTERFACE
-          CALL setlocale(0,"en_US.UTF-8"//CHAR(0))
+          ! Force period-decimal for Fortran's list-directed READ of the
+          ! substituted value, matching mtc_eval's setlocale(LC_ALL,"C").
+          ! The former "en_US.UTF-8" is a UTF-8 codepage locale whose composite
+          ! locale string trips an intermittent UCRT invalid-parameter fast-fail
+          ! (0xC0000409) inside libgfortran's locale save/restore during the
+          ! subsequent sif READ. "C" is canonical, always valid, and '.'-decimal.
+          CALL setlocale(0,"C"//CHAR(0))
         END BLOCK
 
        closed_region = .false.

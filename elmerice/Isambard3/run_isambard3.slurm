@@ -56,19 +56,15 @@ SCRIPT_PATH=$(scontrol show job "${SLURM_JOB_ID}" |
 	awk -F= '/Command/{print $2}' | awk '{print $1}')
 SCRIPT_DIR=$(dirname "${SCRIPT_PATH}")
 
-# Find the directory containing LICENSE.md (elmerice)
-ELMERICE_DIR="${SCRIPT_DIR}"
-while [[ ! -f "${ELMERICE_DIR}/LICENSE.md" && "${ELMERICE_DIR}" != "/" ]]; do
-	ELMERICE_DIR="$(dirname "${ELMERICE_DIR}")"
+REPO_ROOT="${SCRIPT_DIR}"
+while [[ ! -f "${REPO_ROOT}/LICENSE.md" && "${REPO_ROOT}" != "/" ]]; do
+	REPO_ROOT="$(dirname "${REPO_ROOT}")"
 done
 
-if [[ ! -f "${ELMERICE_DIR}/LICENSE.md" ]]; then
-	echo "ERROR: Could not locate repository root directory (LICENSE.md not found)" >&2
+if [[ ! -f "${REPO_ROOT}/LICENSE.md" ]]; then
+	echo "ERROR: Could not locate repo root (LICENSE.md not found)" >&2
 	exit 1
 fi
-
-# Repository root is the parent directory of elmerice
-REPO_ROOT="$(dirname "${ELMERICE_DIR}")"
 
 BUILD_DIR="${REPO_ROOT}/build"
 INSTALL_DIR="${REPO_ROOT}/install"

@@ -4266,7 +4266,13 @@ END FUNCTION SearchNodeL
       ! InitDone inside the critical section restores real double-checked
       ! locking: cheap in the common (already-initialized) case, since the
       ! unlocked fast path above still avoids the lock entirely once done.
-      !$OMP CRITICAL (GaussPointsAdaptInit)
+      ! NOTE: this MUST stay an unnamed CRITICAL. A named variant
+      ! (GaussPointsAdaptInit) deterministically SIGSEGVs several MPI tests
+      ! (radiation*/radiator*/mgdyn_torus/pointload _np4) on the Windows
+      ! MSYS2/UCRT MinGW gomp runtime -- a toolchain bug in the named-critical
+      ! machinery, unrelated to the logic here (removing the name, or the
+      ! directive entirely, makes them pass; the unnamed lock behaves).
+      !$OMP CRITICAL
       InitDone = ASSOCIATED( pSolver, prevSolver ) .AND. &
           ( prevVisited == pSolver % TimesVisited ) .AND. (.NOT. (IsBC .NEQV. PrevIsBC) )
       IF( .NOT. InitDone ) THEN
@@ -4381,7 +4387,7 @@ END FUNCTION SearchNodeL
       prevSolver => pSolver
       prevVisited = pSolver % TimesVisited
       END IF
-      !$OMP END CRITICAL (GaussPointsAdaptInit)
+      !$OMP END CRITICAL
     END IF
 
     ! Select the reference-element style for THIS call/element. Computed as a

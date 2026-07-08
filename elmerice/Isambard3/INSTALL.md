@@ -22,32 +22,25 @@ Spack must be installed. The recommended version is the `releases/v1.2` branch:
 git clone --depth=2 --branch=releases/v1.2 https://github.com/spack/spack.git ~/spack
 ```
 
-## Dependency setup (spack.yaml)
+Make Spack available in your shell:
 
-`spack.yaml` defines a self-contained Spack environment for Isambard3\. It specifies:
+```bash
+. ~/spack/share/spack/setup-env.sh
+```
 
-- **`mumps+mpi+openmp+shared`** -- sparse direct solver, built against cray-mpich
-- **`hypre+mpi`** -- algebraic multigrid / iterative solver
+This line is typically added to `~/.bashrc` as one-time setup.
 
-All Cray PE components are registered as externals so Spack does not attempt to build them:
+## Spack envinroment (once)
 
-Spack package         | Cray PE module        | Role
---------------------- | --------------------- | --------------------------------
-`cray-mpich@8.1.30`   | `cray-mpich/8.1.30`   | MPI (OFI/cray_shasta)
-`cray-libsci@24.07.0` | `cray-libsci/24.07.0` | BLAS / LAPACK / ScaLAPACK
-`libfabric@1.22.0`    | `libfabric/1.22.0`    | OFI network fabric
-`hdf5@1.12.2`         | `cray-hdf5/1.12.2.11` | HDF5 (used by ElmerFEM directly)
+From the `elmerice/Isambard3` directory activate the environment and install the pinned packages:
 
-### libfabric workaround
+```bash
+cd elmerice/Isambard3
+spack env activate -p .
+spack install
+```
 
-`cray-mpich` has a runtime dependency on `libfabric` that is not part of the Spack dependency graph (because cray-mpich is external). The libfabric module only sets `LD_LIBRARY_PATH`, not `LIBRARY_PATH`, so the linker cannot find it during a clean Spack build. Two mitigations are applied:
-
-1. `config: dirty: true` in `spack.yaml` -- passes the calling shell's environment through to the build, so `LIBRARY_PATH` set in the build script is visible to the linker.
-2. The build script explicitly sets `LIBRARY_PATH=/opt/cray/libfabric/1.22.0/lib64` before calling `spack install`.
-
-### ScaLAPACK workaround
-
-ElmerFEM's `FindSCALAPACK.cmake` searches for a file named `libscalapack*.so`, but `cray-libsci` provides ScaLAPACK as `libsci_gnu_mpi_mp.so`. The build script passes `-DSCALAPACK_LIBRARIES` directly to CMake to bypass the filename search.
+Because `spack.lock` is present, `spack install` will use the pinned concretization in the lockfile and install those exact specs.
 
 ## Building
 

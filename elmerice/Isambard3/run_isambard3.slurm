@@ -50,22 +50,27 @@ eval "$(${CONDA_BIN} shell.bash hook)"
 conda activate base
 
 # -----------------------------------------------------------------------
-# Locate key directories via scontrol + CITATION.cff in repo root
+# Locate repository root via LICENSE.md
 # -----------------------------------------------------------------------
 SCRIPT_PATH=$(scontrol show job "${SLURM_JOB_ID}" |
 	awk -F= '/Command/{print $2}' | awk '{print $1}')
 SCRIPT_DIR=$(dirname "${SCRIPT_PATH}")
 
-REPO_ROOT="$SCRIPT_DIR"
-while [ ! -f "${REPO_ROOT}/CITATION.cff" ] && [ "${REPO_ROOT}" != "/" ]; do
-	REPO_ROOT="$(dirname "${REPO_ROOT}")"
+# Find the directory containing LICENSE.md (elmerice)
+ELMERICE_DIR="${SCRIPT_DIR}"
+while [[ ! -f "${ELMERICE_DIR}/LICENSE.md" && "${ELMERICE_DIR}" != "/" ]]; do
+	ELMERICE_DIR="$(dirname "${ELMERICE_DIR}")"
 done
-if [[ ! -f "${REPO_ROOT}/CITATION.cff" ]]; then
-	echo "ERROR: Could not locate repo root (CITATION.cff not found)" >&2
+
+if [[ ! -f "${ELMERICE_DIR}/LICENSE.md" ]]; then
+	echo "ERROR: Could not locate repository root directory (LICENSE.md not found)" >&2
 	exit 1
 fi
 
-ELMERICE_DIR="${REPO_ROOT}/elmerice"
+# Repository root is the parent directory of elmerice
+REPO_ROOT="$(dirname "${ELMERICE_DIR}")"
+
+ISAMBARD3_DIR="${REPO_ROOT}/elmerice/Isambard3"
 INSTALL_DIR="${REPO_ROOT}/install"
 BUILD_DIR="${REPO_ROOT}/build"
 ELMERSOLVER_MPI="${INSTALL_DIR}/bin/ElmerSolver_mpi"
@@ -74,7 +79,7 @@ ELMERSOLVER_MPI="${INSTALL_DIR}/bin/ElmerSolver_mpi"
 if [[ -f "${HOME}/spack/share/spack/setup-env.sh" ]]; then
 	# shellcheck disable=SC1090
 	source "${HOME}/spack/share/spack/setup-env.sh"
-	spack env activate "${ELMERICE_DIR}"
+	spack env activate "${ISAMBARD3_DIR}"
 	export LD_LIBRARY_PATH="$(spack location -i mumps)/lib:$(spack location -i hypre)/lib:/opt/cray/libfabric/1.22.0/lib64:${LD_LIBRARY_PATH:-}"
 fi
 

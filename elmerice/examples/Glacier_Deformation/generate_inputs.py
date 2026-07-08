@@ -53,13 +53,14 @@ Boundary numbering after extrusion
 from __future__ import annotations
 
 import argparse
-import os
-import re
-import textwrap
-from pathlib import Path
 import ast
 import operator
+import re
+import shutil
+import subprocess
+import textwrap
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -77,6 +78,7 @@ _ALLOWED_OPERATORS: dict[type[ast.AST], Callable[..., Any]] = {
     ast.Pow: operator.pow,
     ast.USub: operator.neg,
 }
+
 
 def _evaluate(
     expr: str,
@@ -147,6 +149,7 @@ def _evaluate(
 # File generators
 # ---------------------------------------------------------------------------
 
+
 def generate_grd(
     width: float,
     length: float,
@@ -184,6 +187,7 @@ def generate_grd(
         fh.write(content)
     print(f"  Written: {filename}  ({nx} x {ny} plan elements)")
 
+
 def generate_from_template(
     template_path: Path,
     output_path: Path,
@@ -217,7 +221,9 @@ def generate_from_template(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(rendered, encoding="utf-8")
 
-    print(f"  Written: {output_path}  ({', '.join(f'{k} → {v}' for k, v in substitutions.items())})")
+    print(
+        f"  Written: {output_path}  ({', '.join(f'{k} → {v}' for k, v in substitutions.items())})"
+    )
 
     return substitutions
 
@@ -248,12 +254,111 @@ def generate_slurm_script(
 
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    print(f"  Written: {output_path}  ({cores} MPI task{'s' if cores != 1 else ''}: {', '.join(replacements)})")
+    print(
+        f"  Written: {output_path}  ({cores} MPI task{'s' if cores != 1 else ''}: {', '.join(replacements)})"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Call external tools
+# ---------------------------------------------------------------------------
+
+
+def find_elmergrid() -> str:
+    """Locate the ElmerGrid executable.
+
+    Search order:
+
+      1. <repository_root>/install/bin/ElmerGrid
+      2. ElmerGrid on the PATH
+
+    The repository root is identified by searching upwards from this script's
+    location until a LICENSE.md file is found.
+    """
+    script_dir = Path(__file__).resolve().parent
+
+    for directory in (script_dir, *script_dir.parents):
+        if (directory / "LICENSE.md").is_file():
+            candidate = directory / "install" / "bin" / "ElmerGrid"
+            if candidate.is_file():
+                return str(candidate)
+            break
+
+    executable = shutil.which("ElmerGrid")
+    if executable is not None:
+        return executable
+
+    raise FileNotFoundError(
+        "Could not locate ElmerGrid.\n"
+        "Looked for:\n"
+        "  <repository>/install/bin/ElmerGrid\n"
+        "and then searched PATH."
+    )
+
+
+def partition_mesh(
+    ncores: int,
+    mesh_name: str = "ice_slab_plan",
+    logfile: Path = Path("ElmerGrid.log"),
+) -> None:
+    """Partition the mesh for MPI execution."""
+
+    if ncores <= 1:
+        print("  Mesh        : serial run (partitioning skipped)")
+        return
+
+    elmergrid = find_elmergrid()
+
+    # print(f"  Mesh        : partitioning for {ncores} MPI task(s)...")
+
+    result = subprocess.run(
+        [
+            elmergrid,
+            "2",
+            "2",
+            mesh_name,
+            "-partdual",
+            "-metiskway",
+            str(ncores),
+        ],
+        capture_output=True,
+        text=True,
+    )
+
+    log = result.stdout + result.stderr
+    logfile.write_text(log, encoding="utf-8")
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"ElmerGrid failed (exit code {result.returncode}). See {logfile}"
+        )
+
+    version = "unknown"
+    partitioner = "unknown"
+    partitions = str(ncores)
+
+    m = re.search(r"Version:\s*(.+)", log)
+    if m:
+        version = m.group(1).strip()
+
+    if "Using dual (elemental) graph" in log:
+        partitioner = "METIS dual graph"
+
+    m = re.search(r"partitioned with Metis to\s+(\d+)\s+partitions", log)
+    if m:
+        partitions = m.group(1)
+
+    print(
+        f"  Mesh   : partitioned successfully "
+        f"({partitions} partitions, {partitioner}; "
+        f"ElmerGrid {version}; log: {logfile})"
+    )
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -296,7 +401,7 @@ def main() -> None:
         default=Path("BCs/slip_linear.sif.template"),
         help="Path to the basal sliding BC template (default: BCs/slip_linear.sif.template)",
     )
-  
+
     parser.add_argument(
         "--cores",
         type=int,
@@ -312,35 +417,60 @@ def main() -> None:
             "Path to the Slurm job script template "
             "(default: ../../Isambard3/run_isambard3.slurm)"
         ),
-    )    
+    )
 
     geo = parser.add_argument_group("Geometry")
-    geo.add_argument("--width",     type=float, default=3000.0, help="Glacier face width in x [m] (default: 3000)")
-    geo.add_argument("--length",    type=float, default=4000.0, help="Glacier length in y [m] (default: 4000)")
-    geo.add_argument("--height",    type=float, default=1500.0, help="Initial ice thickness [m] (default: 1500)")
     geo.add_argument(
-        "--sea-level", type=float, default=1255.0,
+        "--width",
+        type=float,
+        default=3000.0,
+        help="Glacier face width in x [m] (default: 3000)",
+    )
+    geo.add_argument(
+        "--length",
+        type=float,
+        default=4000.0,
+        help="Glacier length in y [m] (default: 4000)",
+    )
+    geo.add_argument(
+        "--height",
+        type=float,
+        default=1500.0,
+        help="Initial ice thickness [m] (default: 1500)",
+    )
+    geo.add_argument(
+        "--sea-level",
+        type=float,
+        default=1255.0,
         help="Sea level elevation [m] (default: 1255; must be < height)",
     )
 
     flow = parser.add_argument_group("Flow")
     flow.add_argument(
-        "--inflow", type=float, default=1000.0,
+        "--inflow",
+        type=float,
+        default=1000.0,
         help="Back-wall inflow velocity in y [m/yr] (default: 1000)",
     )
 
     mesh = parser.add_argument_group("Mesh resolution")
     mesh.add_argument("--nx", type=int, default=10, help="Elements in x (default: 10)")
     mesh.add_argument("--ny", type=int, default=20, help="Elements in y (default: 20)")
-    mesh.add_argument("--nz", type=int, default=30, help="Extruded z-layers (default: 30)")
+    mesh.add_argument(
+        "--nz", type=int, default=30, help="Extruded z-layers (default: 30)"
+    )
 
     time = parser.add_argument_group("Time stepping")
     time.add_argument(
-        "--run-days",     type=int, default=300,
+        "--run-days",
+        type=int,
+        default=300,
         help="Total simulation length in days (default: 300)",
     )
     time.add_argument(
-        "--output-every", type=int, default=10,
+        "--output-every",
+        type=int,
+        default=10,
         help="Write VTU output every N timesteps (default: 10)",
     )
 
@@ -358,19 +488,25 @@ def main() -> None:
 
     if not args.slurm_template.exists():
         parser.error(f"Slurm template not found: {args.slurm_template}")
-        
+
     subaerial = args.height - args.sea_level
 
     print()
     print("=" * 60)
-    print("  Marine Ice-Cliff Deformation - Generate model input files")
+    print("  Marine Ice-Cliff Deformation - Generate model files")
     print("=" * 60)
     print(f"  Template   : {args.template}")
-    print(f"  Geometry   : {args.width:.0f} m wide x {args.length:.0f} m long x {args.height:.0f} m tall")
-    print(f"  Sea level  : {args.sea_level:.0f} m  (subaerial cliff = {subaerial:.0f} m)")
+    print(
+        f"  Geometry   : {args.width:.0f} m wide x {args.length:.0f} m long x {args.height:.0f} m tall"
+    )
+    print(
+        f"  Sea level  : {args.sea_level:.0f} m  (subaerial cliff = {subaerial:.0f} m)"
+    )
     print(f"  Inflow     : {args.inflow:.0f} m/yr at back wall")
     print(f"  Mesh       : {args.nx} x {args.ny} x {args.nz} elements")
-    print(f"  Simulation : {args.run_days} days, dt = 1/365 yr, output every {args.output_every} day(s)")
+    print(
+        f"  Simulation : {args.run_days} days, dt = 1/365 yr, output every {args.output_every} day(s)"
+    )
     print(f"  MPI tasks  : {args.cores}")
     print()
 
@@ -402,9 +538,10 @@ def main() -> None:
     )
 
     generate_startinfo()
-    
+
     generate_grd(args.width, args.length, args.nx, args.ny)
-    
+    partition_mesh(args.cores)
+
     generate_slurm_script(
         args.slurm_template,
         Path("run_isambard3.slurm"),

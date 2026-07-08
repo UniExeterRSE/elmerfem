@@ -1,0 +1,12 @@
+
+Normal-Tangential Velocity = Logical True
+Mass Consistent Normals = Logical True
+Flow Force BC = Logical True
+
+Velocity 1 = Real 0.0e0
+! Basal friction increases along flow (y): 1e2 at inflow (y=0) to 1e4 at terminus.
+! Clamp to [1e2, 1e4] if y is outside [0, length].
+Slip Coefficient 2 = Variable Coordinate 2
+  Real MATC "max(1.0e2 min(1.0e4 1.0e2 + (1.0e4-1.0e2)*tx/length))"
+Slip Coefficient 3 = Variable Coordinate 2
+  Real MATC "max(1.0e2 min(1.0e4 1.0e2 + (1.0e4-1.0e2)*tx/length))"

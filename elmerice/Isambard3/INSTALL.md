@@ -30,7 +30,7 @@ Make Spack available in your shell:
 
 This line is typically added to `~/.bashrc` as one-time setup.
 
-## Spack envinroment (once)
+## Install spack environment (one-time setup)
 
 From the `elmerice/Isambard3` directory activate the environment and install the pinned packages:
 
@@ -42,27 +42,24 @@ spack install
 
 Because `spack.lock` is present, `spack install` will use the pinned concretization in the lockfile and install those exact specs.
 
-## Building
+See (SPACK_ENV.md)[SPACK_ENV.md] for
 
-Submit the SLURM job from the repository root directory`:
+## Build `elmerice` executable
 
-```bash
-sbatch elmerice/build_elmerice_isambard3.slurm
-```
-
-The script:
-
-1. Loads Cray PE modules (`PrgEnv-gnu`, `gcc-native/13.2`, `cray-hdf5`, `cray-netcdf`)
-2. Activates the Spack environment from the `elmerice/` directory
-3. Runs `spack install` (no-op if Mumps and Hypre are already installed)
-4. Runs CMake configuration and `make -j16` using `$SLURM_CPUS_PER_TASK` cores
-5. Installs to `<repo_root>/install/` (override with `INSTALL_PREFIX=...`)
-
-The install prefix can be overridden at submission time:
+Submit the SLURM job from the repository root directory:
 
 ```bash
-INSTALL_PREFIX=/path/to/install sbatch elmerice/build_elmerice_isambard3.slurm
+sbatch build_elmerice_isambard3.slurm
 ```
+
+The SLURM script builds the `elmerice` executable:
+
+- Loads Cray PE modules and sources Spack.
+- Locates the repository root by searching upward from the submit directory (or `$PWD`) for `LICENSE.md`.
+- Finds the Spack environment directory (expects `spack.yaml` in `elmerice/Isambard3` under the repo root) and activates it.
+- Runs `spack install` to install any missing packages; this is a no-op if the pinned specs in `spack.lock` are already installed.
+- Finds `MUMPS_ROOT` and `HYPRE_ROOT` using `spack location -i`, and updates `LD_LIBRARY_PATH` so the linker/runtime can find required libraries.
+- Creates an out-of-source build directory under the repository root (`build/`), configures CMake, then builds with `make -j"$SLURM_CPUS_PER_TASK"` and `make install`.
 
 Build logs are written to `build_elmerice-<jobid>.out.log` and `.err.log` in the working directory.
 

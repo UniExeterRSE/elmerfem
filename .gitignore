@@ -557,3 +557,5 @@ healthchecksdb
 MigrationBackup/
 
 
+install/
+build/

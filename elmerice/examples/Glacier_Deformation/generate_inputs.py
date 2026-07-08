@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
 """
-Generate Elmer/Ice input files for the 3-D Marine Ice-Cliff Deformation model run.
+Generate all input files required to run the Marine Ice-Cliff Deformation model
+in Elmer/Ice.
 
-Reads ``ice_slab.sif.template`` and substitutes the parametrised MATC scalar
-assignments (``$varname = <value>``) with values supplied via CLI arguments.
+The solver input files are generated from text templates using placeholders of
+the form ``{{ VARIABLE }}``, where variable names correspond directly to the
+command-line options (converted to upper case). Simple arithmetic expressions
+are also supported, for example::
+
+    {{ WIDTH }}
+    {{ HEIGHT }}
+    {{ SEA_LEVEL }}
+    {{ HEIGHT - SEA_LEVEL }}
 
 Generated files
 ---------------
-  ice_slab_plan.grd       - ElmerGrid 2D plan-view mesh (x-y footprint)
-  ice_slab.sif            - Elmer solver input file (rendered from template)
-  BCs/slip_linear.sif     - basal sliding boundary condition (included by ice_slab.sif)
+  ice_slab_plan.grd       - ElmerGrid 2D plan-view mesh
+  ice_slab.sif            - Elmer solver input file
+  BCs/slip_linear.sif     - rendered basal sliding boundary condition
+  run_isambard3.slurm     - Slurm submission script with requested MPI task count
   ELMERSOLVER_STARTINFO   - tells ElmerSolver which .sif to use
 
 Usage
@@ -18,18 +27,21 @@ Usage
 
 Template syntax
 ---------------
-  The SIF template uses placeholders enclosed in double braces.
-  Examples:
+  Templates use placeholders enclosed in double braces. Variable names correspond
+  directly to the command-line arguments (converted to upper case).
+
+  Examples::
+
       {{ WIDTH }}
       {{ HEIGHT }}
       {{ SEA_LEVEL }}
       {{ HEIGHT - SEA_LEVEL }}
 
-  Variable names correspond directly to the command-line arguments (but in upper case).
-  Simple arithmetic expressions (+, -, *, /, **) are also supported.
+  Simple arithmetic expressions using ``+``, ``-``, ``*``, ``/`` and ``**`` are
+  also supported.
 
 Boundary numbering after extrusion
------------------------------------
+----------------------------------
   BC 1  -  y = 0       back wall            (inflow in y)
   BC 2  -  x = width   right wall           (no x-flow; mesh pinned in x only)
   BC 3  -  y = length  marine calving front (hydrostatic ocean pressure; mesh advance)
@@ -203,6 +215,26 @@ def generate_startinfo(sif_filename: str = "ice_slab.sif") -> None:
     print(f"  Written: ELMERSOLVER_STARTINFO  -> {sif_filename}")
 
 
+def generate_slurm_script(
+    template_path: Path,
+    output_path: Path,
+    cores: int,
+) -> None:
+    """Generate a Slurm job script with the requested MPI core count."""
+
+    lines = template_path.read_text(encoding="utf-8").splitlines()
+
+    for i, line in enumerate(lines):
+        if line.startswith("#SBATCH --ntasks="):
+            lines[i] = f"#SBATCH --ntasks={cores}"
+        elif line.startswith("#SBATCH --ntasks-per-node="):
+            lines[i] = f"#SBATCH --ntasks-per-node={cores}"
+
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    print(f"  Written: {output_path}  ({cores} MPI task{'s' if cores != 1 else ''})")
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -248,6 +280,23 @@ def main() -> None:
         default=Path("BCs/slip_linear.sif.template"),
         help="Path to the basal sliding BC template (default: BCs/slip_linear.sif.template)",
     )
+  
+    parser.add_argument(
+        "--cores",
+        type=int,
+        default=2,
+        help="Number of MPI tasks to request in the generated Slurm job script (default: 2)",
+    )
+
+    parser.add_argument(
+        "--slurm-template",
+        type=Path,
+        default=Path("../../Isambard3/run_isambard3.slurm"),
+        help=(
+            "Path to the Slurm job script template "
+            "(default: ../../Isambard3/run_isambard3.slurm)"
+        ),
+    )    
 
     geo = parser.add_argument_group("Geometry")
     geo.add_argument("--width",     type=float, default=3000.0, help="Glacier face width in x [m] (default: 3000)")
@@ -288,6 +337,12 @@ def main() -> None:
     if not args.template.exists():
         parser.error(f"Template not found: {args.template}")
 
+    if args.cores < 1:
+        parser.error("--cores must be at least 1")
+
+    if not args.slurm_template.exists():
+        parser.error(f"Slurm template not found: {args.slurm_template}")
+        
     subaerial = args.height - args.sea_level
 
     print()
@@ -300,6 +355,7 @@ def main() -> None:
     print(f"  Inflow     : {args.inflow:.0f} m/yr at back wall")
     print(f"  Mesh       : {args.nx} x {args.ny} x {args.nz} elements")
     print(f"  Simulation : {args.run_days} days, dt = 1/365 yr, output every {args.output_every} day(s)")
+    print(f"  MPI tasks  : {args.cores}")
     print()
 
     # Map CLI arguments to the Jinja2-style variable names used in the template.

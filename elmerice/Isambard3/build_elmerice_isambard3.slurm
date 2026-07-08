@@ -13,7 +13,7 @@
 set -e
 
 echo "========================================"
-echo "Job: $SLURM_JOB_NAME  ID: $SLURM_JOB_ID"
+echo "Job: ${SLURM_JOB_NAME}  ID: ${SLURM_JOB_ID}"
 echo "Host: $(hostname)  Started: $(date)"
 echo "========================================"
 
@@ -93,8 +93,8 @@ cmake \
 	"${REPO_ROOT}"
 
 echo ""
-echo "Building Elmer/Ice with $SLURM_CPUS_PER_TASK cores..."
-make -j"$SLURM_CPUS_PER_TASK"
+echo "Building Elmer/Ice with ${SLURM_CPUS_PER_TASK} cores..."
+make -j"${SLURM_CPUS_PER_TASK}"
 
 make install
 
@@ -102,5 +102,5 @@ echo ""
 echo "========================================"
 echo "Build & Install completed successfully!"
 echo "Finished: $(date)"
-echo "Install prefix: $INSTALL_PREFIX"
+echo "Install prefix: ${INSTALL_PREFIX}"
 echo "========================================"

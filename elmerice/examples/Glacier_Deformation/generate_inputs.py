@@ -197,18 +197,6 @@ def generate_from_template(
 
     print(f"  Written: {output_path}")
 
-def generate_sif(
-    template_path: Path,
-    variables: dict[str, float | int],
-    output_path: str | Path,
-) -> None:
-    template = template_path.read_text(encoding="utf-8")
-    rendered = render_template_variables(template, variables)
-    with open(output_path, "w", encoding="utf-8") as fh:
-        fh.write(rendered)
-    print(f"  Written: {output_path}  (rendered from {template_path})")
-
-
 def generate_startinfo(sif_filename: str = "ice_slab.sif") -> None:
     with open("ELMERSOLVER_STARTINFO", "w", encoding="utf-8") as fh:
         fh.write(f"{sif_filename}\n")
@@ -386,7 +374,14 @@ def main() -> None:
     )
 
     generate_startinfo()
+    
     generate_grd(args.width, args.length, args.nx, args.ny)
+    
+    generate_slurm_script(
+        args.slurm_template,
+        Path("run_isambard3.slurm"),
+        args.cores,
+    )
 
     print()
     print("Next steps:")

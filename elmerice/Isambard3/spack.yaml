@@ -1,0 +1,82 @@
+# Spack environment for ElmerIce on Isambard3 (Cray PE, aarch64/neoverse_v2)
+#
+# Setup:
+#   spack env activate -p elmerice/
+#   spack install
+#
+# The 'dirty' config is required because cray-mpich has a transitive runtime
+# dependency on libfabric (via libmpi_gnu_123.so) that is not in the spack
+# dependency graph (cray-mpich is external). libfabric is only available via
+# LD_LIBRARY_PATH from its module, not LIBRARY_PATH, so the linker can't find
+# it in a clean spack build environment. Setting dirty:true passes the calling
+# shell's environment (which has LIBRARY_PATH set) through to the build.
+
+spack:
+  specs:
+  - mumps+mpi+openmp+shared
+  - hypre+mpi
+
+  view: false
+
+  config:
+    dirty: true
+
+  concretizer:
+    unify: true
+    reuse: true
+
+  packages:
+    all:
+      require: "%gcc@13.2.1 target=neoverse_v2"
+
+    mpi:
+      require: cray-mpich
+
+    cray-mpich:
+      externals:
+      - spec: cray-mpich@8.1.30~cuda~rocm+wrappers
+        prefix: /opt/cray/pe/mpich/8.1.30/ofi/gnu/12.3
+        modules:
+        - cray-mpich/8.1.30
+        extra_attributes:
+          environment:
+            prepend_path:
+              LIBRARY_PATH: /opt/cray/libfabric/1.22.0/lib64
+      buildable: false
+
+    cray-libsci:
+      externals:
+      - spec: cray-libsci@24.07.0+mpi+openmp
+        prefix: /opt/cray/pe/libsci/24.07.0/GNU/12.3/aarch64
+        modules:
+        - cray-libsci/24.07.0
+      buildable: false
+
+    libfabric:
+      externals:
+      - spec: libfabric@1.22.0 fabrics=cxi,shm,tcp,udp
+        prefix: /opt/cray/libfabric/1.22.0
+        modules:
+        - libfabric/1.22.0
+      buildable: false
+
+    hdf5:
+      externals:
+      - spec: hdf5@1.12.2~cxx+fortran+hl~java+mpi~szip~threadsafe+tools api=v112
+        prefix: /opt/cray/pe/hdf5-parallel/1.12.2.11/gnu/12.3
+        modules:
+        - cray-hdf5-parallel/1.12.2.11
+      - spec: hdf5@1.12.2+cxx+fortran+hl~java~mpi~szip~threadsafe+tools api=v112
+        prefix: /opt/cray/pe/hdf5/1.12.2.11/gnu/12.3
+        modules:
+        - cray-hdf5/1.12.2.11
+      buildable: false
+
+    netlib-scalapack:
+      buildable: false
+
+    openmpi:
+      buildable: false
+
+    mpich:
+      buildable: false

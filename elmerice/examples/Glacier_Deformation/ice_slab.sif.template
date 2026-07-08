@@ -1,19 +1,19 @@
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!                                                                 !!
-!!  3-D Marine Ice-Cliff Deformation - Benchmark Setup            !!
-!!  Inspired by Crawford et al. (2021) Nature Communications       !!
-!!                                                                 !!
-!!  Geometry (metres):                                             !!
-!!    width  = 3000 m  (x-axis, glacier face width)                !!
-!!    length = 4000 m  (y-axis, along-flow grounded extension)     !!
-!!    height = 1500 m   (z-axis, uniform initial thickness profile)!!
-!!                                                                 !!
-!!  Physics:                                                       !!
-!!    Full Stokes, Glen flow law (n = 3), temperate ice (0°C)      !!
-!!    Sliding bed, inflow at back, kinematic calving-front advance.!!
-!!    Sea level at z = 1255m leaves a 245m subaerial cliff front.   !!
-!!                                                                 !!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                                                    !!
+!!   3-D Marine Ice-Cliff Deformation - Benchmark Setup               !!
+!!   Inspired by Crawford et al. (2021) Nature Communications         !!
+!!                                                                    !!
+!!   Geometry (metres):                                               !!
+!!     width  = {{ WIDTH }} m  (x-axis, glacier face width)                  !!
+!!     length = {{ LENGTH }} m  (y-axis, along-flow grounded extension)       !!
+!!     height = {{ HEIGHT }} m   (z-axis, uniform initial thickness)          !!
+!!                                                                    !!
+!!   Physics:                                                         !!
+!!     Full Stokes, Glen flow law (n = 3), temperate ice (0°C)        !!
+!!     Sliding bed, inflow at back, kinematic calving-front advance.  !!
+!!     Sea level at z = {{ SEALEVEL }}m leaves a {{ HEIGHT-SEALEVEL }}m subaerial cliff front.    !!
+!!                                                                    !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 check keywords warn
 echo on
@@ -21,10 +21,10 @@ echo on
 !---------------------------------------------------------
 ! GEOMETRY  (metres)
 !---------------------------------------------------------
-$width       = 3000.0     ! x-extent
-$length      = 4000.0     ! y-extent (glacier flow direction)
-$height      = 1500.0     ! ice thickness profile
-$nz          = 30         ! z-layers (Discretization for non-linear shear profiles)
+$width       = {{ WIDTH }}.0      ! x-extent
+$length      = {{ LENGTH }}.0      ! y-extent (glacier flow direction)
+$height      = {{ HEIGHT }}.0      ! ice thickness profile
+$nz          = 30          ! z-layers (Discretization for non-linear shear profiles)
 
 !---------------------------------------------------------
 ! PHYSICAL PARAMETERS  (MPa - year - metre system)
@@ -54,7 +54,7 @@ $eta = (2.0 * A)^(-1.0 / n)
 ! BOUNDARY / INFLOW PARAMETERS
 !---------------------------------------------------------
 $U_inflow = 1000.0
-$sea_level = 1255.0       ! Submerges 1255m of the 1500m face under water
+$sea_level = 1255.0        ! Submerges 1255m of the 1500m face under water
 
 !---------------------------------------------------------
 ! TIME STEPPING (Viscous relaxation window prior to fracture analysis)
@@ -80,7 +80,7 @@ Simulation
   Coordinate Mapping(3) = 1 2 3
   Simulation Type   = "Transient"
 
-  Extruded Mesh Levels = 30
+  Extruded Mesh Levels = $nz
 
   Timestepping Method = "BDF"
   BDF Order           = 1
@@ -149,7 +149,6 @@ End
 !==========================================================
 ! MATERIAL PROPERTIES
 !==========================================================
-! copy from Calving3D example with edits
 Material 1
 
   Density = Real $rhoi
@@ -325,7 +324,7 @@ Boundary Condition 2
 End
 
 ! BC 3: Marine Calving Front (y = length)
-! Implements hydrostatic water pressure below sea level (z = 1255m)
+! Implements hydrostatic water pressure below sea level
 Boundary Condition 3
   Name = "Calving Front"
   Target Boundaries = 3

@@ -78,7 +78,10 @@ _ALLOWED_OPERATORS: dict[type[ast.AST], Callable[..., Any]] = {
     ast.USub: operator.neg,
 }
 
-def _evaluate(expr: str, variables: dict[str, float | int]) -> float | int:
+def _evaluate(
+    expr: str,
+    variables: dict[str, float | int],
+) -> tuple[float | int, set[str]]:
     """Safely evaluate a simple arithmetic expression.
 
     Supported:
@@ -89,7 +92,18 @@ def _evaluate(expr: str, variables: dict[str, float | int]) -> float | int:
         {{ HEIGHT - SEA_LEVEL + 50 }}
 
     Only variable names, numbers and + - * / ** are permitted.
+
+    Returns
+    -------
+    value
+        The evaluated result.
+
+    used_variables
+        The set of template variable names referenced while evaluating the
+        expression.
     """
+
+    used_variables: set[str] = set()
 
     def visit(node: ast.AST) -> Any:
         if isinstance(node, ast.Expression):
@@ -100,23 +114,24 @@ def _evaluate(expr: str, variables: dict[str, float | int]) -> float | int:
 
         if isinstance(node, ast.Name):
             try:
+                used_variables.add(node.id)
                 return variables[node.id]
             except KeyError:
-                raise ValueError(f"Unknown template variable '{node.id}'")
+                raise ValueError(f"Unknown template variable '{node.id}'") from None
 
         if isinstance(node, ast.BinOp):
-          try:
-              op = _ALLOWED_OPERATORS[type(node.op)]
-          except KeyError as exc:
-              raise ValueError(f"Unsupported operator in '{expr}'") from exc
-          return op(visit(node.left), visit(node.right))
+            try:
+                op = _ALLOWED_OPERATORS[type(node.op)]
+            except KeyError as exc:
+                raise ValueError(f"Unsupported operator in '{expr}'") from exc
+            return op(visit(node.left), visit(node.right))
 
         if isinstance(node, ast.UnaryOp):
-          try:
-              op = _ALLOWED_OPERATORS[type(node.op)]
-          except KeyError as exc:
-              raise ValueError(f"Unsupported operator in '{expr}'") from exc
-          return op(visit(node.operand))
+            try:
+                op = _ALLOWED_OPERATORS[type(node.op)]
+            except KeyError as exc:
+                raise ValueError(f"Unsupported operator in '{expr}'") from exc
+            return op(visit(node.operand))
 
         raise ValueError(f"Unsupported expression '{expr}'")
 
@@ -125,21 +140,7 @@ def _evaluate(expr: str, variables: dict[str, float | int]) -> float | int:
     except SyntaxError as exc:
         raise ValueError(f"Invalid template expression '{expr}'") from exc
 
-    return visit(tree)
-
-
-def render_template_variables(template: str, variables: dict[str, float | int]) -> str:
-    """Render {{ VARIABLE }} placeholders in the template."""
-
-    def replace(match):
-        value = _evaluate(match.group(1), variables)
-
-        if isinstance(value, float) and value.is_integer():
-            return str(int(value))
-
-        return str(value)
-
-    return _TEMPLATE_EXPR.sub(replace, template)
+    return visit(tree), used_variables
 
 
 # ---------------------------------------------------------------------------
@@ -187,20 +188,44 @@ def generate_from_template(
     template_path: Path,
     output_path: Path,
     variables: dict[str, float | int],
-) -> None:
+) -> dict[str, float | int]:
+    """Render a template file and write the result.
+
+    Returns
+    -------
+    dict
+        Mapping of every template variable referenced by the template to the
+        value substituted for it.
+    """
     template = template_path.read_text(encoding="utf-8")
-    rendered = render_template_variables(template, variables)
+
+    substitutions: dict[str, float | int] = {}
+
+    def replace(match: re.Match[str]) -> str:
+        value, used = _evaluate(match.group(1).strip(), variables)
+
+        for name in used:
+            substitutions[name] = variables[name]
+
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+
+        return str(value)
+
+    rendered = _TEMPLATE_EXPR.sub(replace, template)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-
     output_path.write_text(rendered, encoding="utf-8")
 
-    print(f"  Written: {output_path}")
+    print(f"  Written: {output_path}  ({', '.join(f'{k} → {v}' for k, v in substitutions.items())})")
+
+    return substitutions
+
 
 def generate_startinfo(sif_filename: str = "ice_slab.sif") -> None:
     with open("ELMERSOLVER_STARTINFO", "w", encoding="utf-8") as fh:
         fh.write(f"{sif_filename}\n")
-    print(f"  Written: ELMERSOLVER_STARTINFO  -> {sif_filename}")
+    print(f"  Written: ELMERSOLVER_STARTINFO  → {sif_filename}")
 
 
 def generate_slurm_script(
@@ -211,16 +236,19 @@ def generate_slurm_script(
     """Generate a Slurm job script with the requested MPI core count."""
 
     lines = template_path.read_text(encoding="utf-8").splitlines()
+    replacements = []
 
     for i, line in enumerate(lines):
         if line.startswith("#SBATCH --ntasks="):
             lines[i] = f"#SBATCH --ntasks={cores}"
+            replacements.append(f"--ntasks={cores}")
         elif line.startswith("#SBATCH --ntasks-per-node="):
             lines[i] = f"#SBATCH --ntasks-per-node={cores}"
+            replacements.append(f"--ntasks-per-node={cores}")
 
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    print(f"  Written: {output_path}  ({cores} MPI task{'s' if cores != 1 else ''})")
+    print(f"  Written: {output_path}  ({cores} MPI task{'s' if cores != 1 else ''}: {', '.join(replacements)})")
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +363,7 @@ def main() -> None:
 
     print()
     print("=" * 60)
-    print("  Marine Ice-Cliff Deformation - Input Generator")
+    print("  Marine Ice-Cliff Deformation - Generate model input files")
     print("=" * 60)
     print(f"  Template   : {args.template}")
     print(f"  Geometry   : {args.width:.0f} m wide x {args.length:.0f} m long x {args.height:.0f} m tall")

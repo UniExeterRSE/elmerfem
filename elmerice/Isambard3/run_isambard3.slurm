@@ -70,12 +70,12 @@ fi
 # Repository root is the parent directory of elmerice
 REPO_ROOT="$(dirname "${ELMERICE_DIR}")"
 
-ISAMBARD3_DIR="${REPO_ROOT}/elmerice/Isambard3"
-INSTALL_DIR="${REPO_ROOT}/install"
 BUILD_DIR="${REPO_ROOT}/build"
+INSTALL_DIR="${REPO_ROOT}/install"
 ELMERSOLVER_MPI="${INSTALL_DIR}/bin/ElmerSolver_mpi"
 
 # Activate Spack environment (provides MUMPS, HDF5, etc.)
+ISAMBARD3_DIR="${REPO_ROOT}/elmerice/Isambard3"
 if [[ -f "${HOME}/spack/share/spack/setup-env.sh" ]]; then
 	# shellcheck disable=SC1090
 	source "${HOME}/spack/share/spack/setup-env.sh"

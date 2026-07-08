@@ -113,14 +113,28 @@ Units: MPa – year – metre (Elmer/Ice standard).
 ## Boundary conditions
 
 BC | Location   | Condition
--- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------
+-- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 1  | y = 0      | Back wall -- prescribed inflow: `Velocity 2 (Vy) = $U_inflow` (default 1000); `Velocity 1 (Vx) = 0`. Longitudinal mesh update fields are held fixed here.
 2  | x = width  | Right wall -- no normal flow (`Vx = 0`). Mesh is pinned only in the x-direction (allowing y/z to follow front advance at corners).
-3  | y = length | Calving front -- hydrostatic ocean pressure applied below sea level via an MATC `External Pressure` on coordinate 3 (z):
+3  | y = length | Calving front -- hydrostatic ocean pressure applied below sea level; `Flow Force BC` and `Calving Front` enabled. A longitudinal mesh update applies an incremental y-displacement taken from the flow solution (vy _dt); because the MeshSolver subtracts the previous step's field each timestep, this incremental vy_dt BC cancels after the first timestep (see `ice_slab.sif` comments).
+4  | x = 0      | Left wall -- no normal flow (`Vx = 0`), mesh pinned only in x (matches right wall behavior).
+5  | z = 0      | Bedrock -- includes `BCs/slip_linear.sif` (linear slip). Basal `Slip Coefficient 2` and `Slip Coefficient 3` are MATC expressions varying with coordinate 2 (y), clamped to [1e2, 1e4]. Mass-consistent normals and `Flow Force BC` are enabled.
+6  | z = Zs     | Top free surface -- Body Id = 2; `Top Surface = Equals Zs`; `Pressure = 0`. `Zs` is evolved by the `FreeSurfaceSolver` (ALE formulation).
 
-`Real MATC "if (tx(0) < sea_level) { rhow * gravity * (sea_level - tx(0)) } else { 0.0 }"`
+External Pressure (BC 3) MATC (from `ice_slab.sif`):
 
-`Flow Force BC` and `Calving Front` are enabled. A longitudinal mesh update applies an incremental y-displacement taken from the flow solution (vy _dt); because the MeshSolver subtracts the previous step's field each timestep, this incremental vy_dt BC cancels after the first timestep (see `ice_slab.sif` comments). 4 | x = 0 | Left wall -- no normal flow (`Vx = 0`), mesh pinned only in x (matches right wall behavior). 5 | z = 0 | Bedrock -- includes `BCs/slip_linear.sif` (linear slip). Basal `Slip Coefficient 2` and `Slip Coefficient 3` are MATC expressions varying with coordinate 2 (y), clamped to [1e2, 1e4]. Mass-consistent normals and `Flow Force BC` are enabled. 6 | z = Zs | Top free surface -- Body Id = 2; `Top Surface = Equals Zs`; `Pressure = 0`. `Zs` is evolved by the `FreeSurfaceSolver` (ALE formulation).
+```
+Real MATC "if (tx(0) < sea_level) { rhow * gravity * (sea_level - tx(0)) } else { 0.0 }"
+```
+
+Basal slip coefficient MATC (from `BCs/slip_linear.sif`):
+
+```
+Slip Coefficient 2 = Variable Coordinate 2
+  Real MATC "max(1.0e2 min(1.0e4 1.0e2 + (1.0e4-1.0e2)*tx/4000))"
+Slip Coefficient 3 = Variable Coordinate 2
+  Real MATC "max(1.0e2 min(1.0e4 1.0e2 + (1.0e4-1.0e2)*tx/4000))"
+```
 
 --------------------------------------------------------------------------------
 

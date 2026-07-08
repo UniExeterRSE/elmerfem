@@ -45,19 +45,19 @@ import os
 import re
 import textwrap
 from pathlib import Path
-
+import ast
+import operator
+from collections.abc import Callable
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Template rendering
 # ---------------------------------------------------------------------------
 
-import ast
-import operator
-
 _TEMPLATE_EXPR = re.compile(r"{{\s*(.*?)\s*}}")
 
 
-_ALLOWED_OPERATORS = {
+_ALLOWED_OPERATORS: dict[type[ast.AST], Callable[..., Any]] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
     ast.Mult: operator.mul,
@@ -65,7 +65,6 @@ _ALLOWED_OPERATORS = {
     ast.Pow: operator.pow,
     ast.USub: operator.neg,
 }
-
 
 def _evaluate(expr: str, variables: dict[str, float | int]) -> float | int:
     """Safely evaluate a simple arithmetic expression.
@@ -80,7 +79,7 @@ def _evaluate(expr: str, variables: dict[str, float | int]) -> float | int:
     Only variable names, numbers and + - * / ** are permitted.
     """
 
-    def visit(node):
+    def visit(node: ast.AST) -> Any:
         if isinstance(node, ast.Expression):
             return visit(node.body)
 
@@ -94,20 +93,30 @@ def _evaluate(expr: str, variables: dict[str, float | int]) -> float | int:
                 raise ValueError(f"Unknown template variable '{node.id}'")
 
         if isinstance(node, ast.BinOp):
-            op = _ALLOWED_OPERATORS[type(node.op)]
-            return op(visit(node.left), visit(node.right))
+          try:
+              op = _ALLOWED_OPERATORS[type(node.op)]
+          except KeyError as exc:
+              raise ValueError(f"Unsupported operator in '{expr}'") from exc
+          return op(visit(node.left), visit(node.right))
 
         if isinstance(node, ast.UnaryOp):
-            op = _ALLOWED_OPERATORS[type(node.op)]
-            return op(visit(node.operand))
+          try:
+              op = _ALLOWED_OPERATORS[type(node.op)]
+          except KeyError as exc:
+              raise ValueError(f"Unsupported operator in '{expr}'") from exc
+          return op(visit(node.operand))
 
         raise ValueError(f"Unsupported expression '{expr}'")
 
-    tree = ast.parse(expr, mode="eval")
+    try:
+        tree = ast.parse(expr, mode="eval")
+    except SyntaxError as exc:
+        raise ValueError(f"Invalid template expression '{expr}'") from exc
+
     return visit(tree)
 
 
-def render_template(template: str, variables: dict[str, float | int]) -> str:
+def render_template_variables(template: str, variables: dict[str, float | int]) -> str:
     """Render {{ VARIABLE }} placeholders in the template."""
 
     def replace(match):
@@ -162,35 +171,27 @@ def generate_grd(
         fh.write(content)
     print(f"  Written: {filename}  ({nx} x {ny} plan elements)")
 
+def generate_from_template(
+    template_path: Path,
+    output_path: Path,
+    variables: dict[str, float | int],
+) -> None:
+    template = template_path.read_text(encoding="utf-8")
+    rendered = render_template_variables(template, variables)
 
-def generate_slip_bc(filename: str = os.path.join("BCs", "slip_linear.sif")) -> None:
-    content = textwrap.dedent("""\
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-      Normal-Tangential Velocity = Logical True
-      Mass Consistent Normals = Logical True
-      Flow Force BC = Logical True
+    output_path.write_text(rendered, encoding="utf-8")
 
-      Velocity 1 = Real 0.0e0
-      ! Basal friction increases along flow (y): 1e2 at inflow (y=0) to 1e4 at terminus.
-      ! Clamp to [1e2, 1e4] if y is outside [0, length].
-      Slip Coefficient 2 = Variable Coordinate 2
-        Real MATC "max(1.0e2 min(1.0e4 1.0e2 + (1.0e4-1.0e2)*tx/length))"
-      Slip Coefficient 3 = Variable Coordinate 2
-        Real MATC "max(1.0e2 min(1.0e4 1.0e2 + (1.0e4-1.0e2)*tx/length))"
-    """)
-    os.makedirs(os.path.dirname(filename) or ".", exist_ok=True)
-    with open(filename, "w", encoding="utf-8") as fh:
-        fh.write(content)
-    print(f"  Written: {filename}")
-
+    print(f"  Written: {output_path}")
 
 def generate_sif(
     template_path: Path,
-    variables: dict[str, str],
-    output_path: str = "ice_slab.sif",
+    variables: dict[str, float | int],
+    output_path: str | Path,
 ) -> None:
     template = template_path.read_text(encoding="utf-8")
-    rendered = render_template(template, variables)
+    rendered = render_template_variables(template, variables)
     with open(output_path, "w", encoding="utf-8") as fh:
         fh.write(rendered)
     print(f"  Written: {output_path}  (rendered from {template_path})")
@@ -218,7 +219,7 @@ def main() -> None:
         epilog=textwrap.dedent("""\
             Examples
             --------
-            Default (3 km x 4 km x 1500 m, sea level at 1255 m, inflow 1000 m/yr):
+            Default (3000 m x 4000 m x 1500 m, sea level at 1255 m, inflow 1000 m/yr):
               python generate_inputs.py
 
             Deeper submergence:
@@ -241,11 +242,17 @@ def main() -> None:
         default=Path("ice_slab.sif.template"),
         help="Path to the SIF template file (default: ice_slab.sif.template)",
     )
+    parser.add_argument(
+        "--slip-template",
+        type=Path,
+        default=Path("BCs/slip_linear.sif.template"),
+        help="Path to the basal sliding BC template (default: BCs/slip_linear.sif.template)",
+    )
 
     geo = parser.add_argument_group("Geometry")
-    geo.add_argument("--width",     type=float, default=3000.0, help="Glacier face width in x [m]")
-    geo.add_argument("--length",    type=float, default=4000.0, help="Glacier length in y [m]")
-    geo.add_argument("--height",    type=float, default=1500.0, help="Initial ice thickness [m]")
+    geo.add_argument("--width",     type=float, default=3000.0, help="Glacier face width in x [m] (default: 3000)")
+    geo.add_argument("--length",    type=float, default=4000.0, help="Glacier length in y [m] (default: 4000)")
+    geo.add_argument("--height",    type=float, default=1500.0, help="Initial ice thickness [m] (default: 1500)")
     geo.add_argument(
         "--sea-level", type=float, default=1255.0,
         help="Sea level elevation [m] (default: 1255; must be < height)",
@@ -295,7 +302,7 @@ def main() -> None:
     print(f"  Simulation : {args.run_days} days, dt = 1/365 yr, output every {args.output_every} day(s)")
     print()
 
-    # Map CLI arguments to the MATC variable names used in the template.
+    # Map CLI arguments to the Jinja2-style variable names used in the template.
     # Values are formatted as strings that are valid MATC scalar literals.
     variables = {
         "WIDTH": args.width,
@@ -310,10 +317,20 @@ def main() -> None:
         "OUTPUT_EVERY": args.output_every,
     }
 
-    generate_sif(args.template, variables)
-    generate_slip_bc()
-    generate_grd(args.width, args.length, args.nx, args.ny)
+    generate_from_template(
+        args.template,
+        Path("ice_slab.sif"),
+        variables,
+    )
+
+    generate_from_template(
+        args.slip_template,
+        Path("BCs/slip_linear.sif"),
+        variables,
+    )
+
     generate_startinfo()
+    generate_grd(args.width, args.length, args.nx, args.ny)
 
     print()
     print("Next steps:")

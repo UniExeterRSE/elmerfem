@@ -16,20 +16,17 @@ Usage
 -----
   python generate_inputs.py [options]
 
-Substitution mechanism
-----------------------
-For each parameter the script locates the *first* line in the template that
-matches the pattern::
+Template syntax
+---------------
+  The SIF template uses placeholders enclosed in double braces.
+  Examples:
+      {{ WIDTH }}
+      {{ HEIGHT }}
+      {{ SEA_LEVEL }}
+      {{ HEIGHT - SEA_LEVEL }}
 
-    $varname = <scalar>   [optional ! comment]
-
-and rewrites it as::
-
-    $varname = <new_value>   [optional ! comment preserved]
-
-Only the scalar assignment lines in the parameter block at the top of the
-template are touched; MATC expressions, solver blocks, and boundary conditions
-are left unchanged.
+  Variable names correspond directly to the command-line arguments (but in upper case).
+  Simple arithmetic expressions (+, -, *, /, **) are also supported.
 
 Boundary numbering after extrusion
 -----------------------------------
@@ -51,43 +48,77 @@ from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
-# SIF scalar-assignment substitution
+# Template rendering
 # ---------------------------------------------------------------------------
 
-# Matches lines of the form:   $varname = 123.0   or   $varname = 30   [! comment]
-# Group 1: everything up to and including "= "
-# Group 2: the scalar value token (no whitespace, stops before optional comment)
-# Group 3: optional trailing whitespace + comment
-_SCALAR_ASSIGNMENT = re.compile(
-    r"^(\$\s*{var}\s*=\s*)([^\s!]+)([ \t]*(?:!.*)?)$"
-)
+import ast
+import operator
+
+_TEMPLATE_EXPR = re.compile(r"{{\s*(.*?)\s*}}")
 
 
-def _substitute(template: str, substitutions: dict[str, str]) -> str:
-    """Replace scalar MATC assignments in *template* for each key in *substitutions*.
+_ALLOWED_OPERATORS = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.Pow: operator.pow,
+    ast.USub: operator.neg,
+}
 
-    Only the *first* matching assignment line for each variable is replaced, which
-    is the definition line in the parameter block.  Later references of the form
-    ``Real $varname`` or ``= $varname`` are MATC expressions and are left alone.
+
+def _evaluate(expr: str, variables: dict[str, float | int]) -> float | int:
+    """Safely evaluate a simple arithmetic expression.
+
+    Supported:
+
+        {{ WIDTH }}
+        {{ HEIGHT - SEA_LEVEL }}
+        {{ WIDTH/2 }}
+        {{ HEIGHT - SEA_LEVEL + 50 }}
+
+    Only variable names, numbers and + - * / ** are permitted.
     """
-    lines = template.splitlines(keepends=True)
-    for varname, new_value in substitutions.items():
-        pattern = re.compile(
-            r"^(\$\s*" + re.escape(varname) + r"\s*=\s*)([^\s!]+)([ \t]*(?:!.*)?)$"
-        )
-        replaced = False
-        for i, line in enumerate(lines):
-            m = pattern.match(line.rstrip("\n\r"))
-            if m:
-                lines[i] = m.group(1) + new_value + m.group(3) + "\n"
-                replaced = True
-                break
-        if not replaced:
-            raise ValueError(
-                f"Could not find a scalar assignment for '${varname}' in the template. "
-                "Check that the template contains a line like '$varname = <value>'."
-            )
-    return "".join(lines)
+
+    def visit(node):
+        if isinstance(node, ast.Expression):
+            return visit(node.body)
+
+        if isinstance(node, ast.Constant):
+            return node.value
+
+        if isinstance(node, ast.Name):
+            try:
+                return variables[node.id]
+            except KeyError:
+                raise ValueError(f"Unknown template variable '{node.id}'")
+
+        if isinstance(node, ast.BinOp):
+            op = _ALLOWED_OPERATORS[type(node.op)]
+            return op(visit(node.left), visit(node.right))
+
+        if isinstance(node, ast.UnaryOp):
+            op = _ALLOWED_OPERATORS[type(node.op)]
+            return op(visit(node.operand))
+
+        raise ValueError(f"Unsupported expression '{expr}'")
+
+    tree = ast.parse(expr, mode="eval")
+    return visit(tree)
+
+
+def render_template(template: str, variables: dict[str, float | int]) -> str:
+    """Render {{ VARIABLE }} placeholders in the template."""
+
+    def replace(match):
+        value = _evaluate(match.group(1), variables)
+
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+
+        return str(value)
+
+    return _TEMPLATE_EXPR.sub(replace, template)
 
 
 # ---------------------------------------------------------------------------
@@ -155,11 +186,11 @@ def generate_slip_bc(filename: str = os.path.join("BCs", "slip_linear.sif")) -> 
 
 def generate_sif(
     template_path: Path,
-    substitutions: dict[str, str],
+    variables: dict[str, str],
     output_path: str = "ice_slab.sif",
 ) -> None:
     template = template_path.read_text(encoding="utf-8")
-    rendered = _substitute(template, substitutions)
+    rendered = render_template(template, variables)
     with open(output_path, "w", encoding="utf-8") as fh:
         fh.write(rendered)
     print(f"  Written: {output_path}  (rendered from {template_path})")
@@ -266,20 +297,22 @@ def main() -> None:
 
     # Map CLI arguments to the MATC variable names used in the template.
     # Values are formatted as strings that are valid MATC scalar literals.
-    substitutions: dict[str, str] = {
-        "width":            f"{args.width:.1f}",
-        "length":           f"{args.length:.1f}",
-        "height":           f"{args.height:.1f}",
-        "nz":               str(args.nz),
-        "U_inflow":         f"{args.inflow:.1f}",
-        "sea_level":        f"{args.sea_level:.1f}",
-        "run_days":         str(args.run_days),
-        "output_every_days": str(args.output_every),
+    variables = {
+        "WIDTH": args.width,
+        "LENGTH": args.length,
+        "HEIGHT": args.height,
+        "SEA_LEVEL": args.sea_level,
+        "INFLOW": args.inflow,
+        "NX": args.nx,
+        "NY": args.ny,
+        "NZ": args.nz,
+        "RUN_DAYS": args.run_days,
+        "OUTPUT_EVERY": args.output_every,
     }
 
-    generate_grd(args.width, args.length, args.nx, args.ny)
+    generate_sif(args.template, variables)
     generate_slip_bc()
-    generate_sif(args.template, substitutions)
+    generate_grd(args.width, args.length, args.nx, args.ny)
     generate_startinfo()
 
     print()

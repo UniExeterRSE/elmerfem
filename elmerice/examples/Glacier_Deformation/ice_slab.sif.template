@@ -4,27 +4,27 @@
 !!   Inspired by Crawford et al. (2021) Nature Communications         !!
 !!                                                                    !!
 !!   Geometry (metres):                                               !!
-!!     width  = {{ WIDTH }} m  (x-axis, glacier face width)                  !!
-!!     length = {{ LENGTH }} m  (y-axis, along-flow grounded extension)       !!
-!!     height = {{ HEIGHT }} m   (z-axis, uniform initial thickness)          !!
+!!     width  = {{ WIDTH }} m                                         !!
+!!     length = {{ LENGTH }} m                                        !!
+!!     height = {{ HEIGHT }} m                                        !!
 !!                                                                    !!
 !!   Physics:                                                         !!
 !!     Full Stokes, Glen flow law (n = 3), temperate ice (0°C)        !!
 !!     Sliding bed, inflow at back, kinematic calving-front advance.  !!
-!!     Sea level at z = {{ SEALEVEL }}m leaves a {{ HEIGHT-SEALEVEL }}m subaerial cliff front.    !!
+!!     Sea level at z = {{ SEA_LEVEL }} m leaves a                   !!
+!!     {{ HEIGHT - SEA_LEVEL }} m subaerial cliff front.              !!
 !!                                                                    !!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 check keywords warn
 echo on
 
 !---------------------------------------------------------
 ! GEOMETRY  (metres)
 !---------------------------------------------------------
-$width       = {{ WIDTH }}.0      ! x-extent
-$length      = {{ LENGTH }}.0      ! y-extent (glacier flow direction)
-$height      = {{ HEIGHT }}.0      ! ice thickness profile
-$nz          = 30          ! z-layers (Discretization for non-linear shear profiles)
+$width       = {{ WIDTH }}      ! x-extent
+$length      = {{ LENGTH }}     ! y-extent (glacier flow direction)
+$height      = {{ HEIGHT }}     ! ice thickness profile
+$nz          = {{ NZ }}         ! z-layers (Discretization for non-linear shear profiles)
 
 !---------------------------------------------------------
 ! PHYSICAL PARAMETERS  (MPa - year - metre system)
@@ -53,14 +53,14 @@ $eta = (2.0 * A)^(-1.0 / n)
 !---------------------------------------------------------
 ! BOUNDARY / INFLOW PARAMETERS
 !---------------------------------------------------------
-$U_inflow = 1000.0
-$sea_level = 1255.0        ! Submerges 1255m of the 1500m face under water
+$U_inflow = {{ INFLOW }}
+$sea_level = {{ SEA_LEVEL }}    ! Submerges {{ SEA_LEVEL }}m of the {{ HEIGHT }}m face under water
 
 !---------------------------------------------------------
 ! TIME STEPPING (Viscous relaxation window prior to fracture analysis)
 !---------------------------------------------------------
-$run_days = 300
-$output_every_days = 10
+$run_days = {{ RUN_DAYS }}
+$output_every_days = {{ OUTPUT_EVERY }}
 
 !==========================================================
 Header
@@ -80,12 +80,12 @@ Simulation
   Coordinate Mapping(3) = 1 2 3
   Simulation Type   = "Transient"
 
-  Extruded Mesh Levels = $nz
+  Extruded Mesh Levels = {{ NZ }}
 
   Timestepping Method = "BDF"
   BDF Order           = 1
-  Timestep Intervals  = $run_days
-  Output Intervals    = $output_every_days
+  Timestep Intervals = {{ RUN_DAYS }}
+  Output Intervals   = {{ OUTPUT_EVERY }}
   Timestep Sizes      = Real $1.0/365.0
 
   Steady State Max Iterations = 1
@@ -325,6 +325,7 @@ End
 
 ! BC 3: Marine Calving Front (y = length)
 ! Implements hydrostatic water pressure below sea level
+! (z = {{ SEA_LEVEL }} m)
 Boundary Condition 3
   Name = "Calving Front"
   Target Boundaries = 3

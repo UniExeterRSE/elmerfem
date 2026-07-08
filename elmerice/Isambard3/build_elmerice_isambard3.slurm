@@ -100,7 +100,19 @@ make install
 
 echo ""
 echo "========================================"
-echo "Build & Install completed successfully!"
-echo "Finished: $(date)"
 echo "Install prefix: ${INSTALL_PREFIX}"
+
+# -----------------------------------------------------------------------
+# Verify ElmerSolver_mpi
+# -----------------------------------------------------------------------
+ELMERSOLVER_EXE="${INSTALL_PREFIX}/bin/ElmerSolver_mpi"
+if [ ! -x "$ELMERSOLVER_EXE" ]; then
+	echo "Build & Install FAILED!"
+	echo "ERROR: ElmerSolver_mpi not found at ${ELMERSOLVER_EXE}"
+else
+	echo "Build & Install completed successfully!"
+	echo "  ElmerSolver_mpi: $ELMERSOLVER_EXE  [OK]"
+fi
+
+echo "Finished: $(date)"
 echo "========================================"

@@ -299,7 +299,7 @@ def find_elmergrid() -> str:
 
 def partition_mesh(
     ncores: int,
-    mesh_name: str = "ice_slab_plan",
+    mesh_name: str = "ice_slab_plan.grd",
     logfile: Path = Path("ElmerGrid.log"),
 ) -> None:
     """Partition the mesh for MPI execution."""
@@ -310,18 +310,20 @@ def partition_mesh(
 
     elmergrid = find_elmergrid()
 
-    # print(f"  Mesh        : partitioning for {ncores} MPI task(s)...")
+    cmd = [
+        elmergrid,
+        "1",
+        "2",
+        mesh_name,
+        "-partdual",
+        "-metiskway",
+        str(ncores),
+    ]
+
+    print("  Running:", " ".join(cmd))
 
     result = subprocess.run(
-        [
-            elmergrid,
-            "2",
-            "2",
-            mesh_name,
-            "-partdual",
-            "-metiskway",
-            str(ncores),
-        ],
+        cmd,
         capture_output=True,
         text=True,
     )

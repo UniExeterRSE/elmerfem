@@ -426,24 +426,39 @@ CONTAINS
      ip_slot = 0
      IF (PRESENT(ip_index)) ip_slot = ip_index
      ! Evaluate reference basis functions and local gradients at (u,v,w).
+     ! Reference basis cache lookup/fill. The cache lives on Element % Type,
+     ! which is SHARED by every element of this type across all OpenMP threads
+     ! (a mesh has only a handful of distinct Type objects). A single shared
+     ! cache filled from inside a parallel assembly loop was an unsynchronized
+     ! data race: concurrent threads that cache-miss grabbed the same next slot
+     ! (ip = BasisCacheCount+1) and tore each other's (U,V,W)-key vs payload
+     ! writes, so a later lookup could match a key while reading a different
+     ! point's basis values -> wrong local matrix -> intermittently, locally
+     ! wrong solution (the ~1% ElastElstatBeamNodal wrong-norm flake on Windows
+     ! CI; invisible to Valgrind memcheck since every access is in bounds -- a
+     ! race, not a memory error). Each thread has its own cache column (last
+     ! index tid), so both lookup and fill are lock-free and race-free and the
+     ! cache stays active during threaded assembly. Same per-thread pattern as
+     ! DefUtils' index stores.
      RefBasisBlock: BLOCK
-       INTEGER :: ip
-       LOGICAL :: InParallel
+       INTEGER :: ip, tid
+       tid = 1
+       !$ tid = omp_get_thread_num() + 1
        IF ( ip_slot > 0 ) THEN
          ! O(1) direct slot lookup
-         IF ( ip_slot <= Element % TYPE % BasisCacheCount ) THEN
-           Basis(1:n)       = Element % Type % BasisCache(ip_slot, 1:n)
-           dLBasisdx(1:n,:) = Element % Type % dBasisCache(ip_slot, 1:n, :)
+         IF ( ip_slot <= Element % TYPE % BasisCacheCount(tid) ) THEN
+           Basis(1:n)       = Element % Type % BasisCache(ip_slot, 1:n, tid)
+           dLBasisdx(1:n,:) = Element % Type % dBasisCache(ip_slot, 1:n, :, tid)
            EXIT RefBasisBlock
          END IF
        ELSE
          ! Linear scan by (u,v,w) coordinates
-         DO ip = 1, Element % TYPE % BasisCacheCount
-           IF ( Element % Type % BasisCacheU(ip) == u .AND. &
-                Element % Type % BasisCacheV(ip) == v .AND. &
-                Element % Type % BasisCacheW(ip) == w ) THEN
-             Basis(1:n)       = Element % TYPE % BasisCache(ip, 1:n)
-             dLBasisdx(1:n,:) = Element % TYPE % dBasisCache(ip, 1:n, :)
+         DO ip = 1, Element % TYPE % BasisCacheCount(tid)
+           IF ( Element % Type % BasisCacheU(ip, tid) == u .AND. &
+                Element % Type % BasisCacheV(ip, tid) == v .AND. &
+                Element % Type % BasisCacheW(ip, tid) == w ) THEN
+             Basis(1:n)       = Element % TYPE % BasisCache(ip, 1:n, tid)
+             dLBasisdx(1:n,:) = Element % TYPE % dBasisCache(ip, 1:n, :, tid)
              EXIT RefBasisBlock
            END IF
          END DO
@@ -452,44 +467,20 @@ CONTAINS
        CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
        CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, pSolver)
 
+       ! Store in this thread's cache column if space available.
+       IF ( ip_slot > 0 ) THEN
+         ip = ip_slot
+       ELSE
+         ip = Element % Type % BasisCacheCount(tid) + 1
+       END IF
 
-       ! Store in cache for non-P elements if space available.
-       !
-       ! The basis cache lives on Element % Type, which is SHARED by every
-       ! element of this type across all OpenMP threads (a mesh has only a
-       ! handful of distinct Type objects). Writing it from inside a parallel
-       ! assembly loop is an unsynchronized data race: concurrent threads that
-       ! cache-miss compute the same next slot (ip = BasisCacheCount+1) and
-       ! tear each other's (U,V,W)-key vs payload writes, so a later lookup can
-       ! match a key while reading a different point's basis values -> wrong
-       ! local matrix -> intermittently, locally wrong solution. (Invisible to
-       ! Valgrind memcheck: every access is in bounds; it is a race, not a
-       ! memory error. Reproduced as the ~1% ElastElstatBeamNodal wrong-norm
-       ! flake on Windows CI.) Only populate the cache when NOT inside an active
-       ! parallel region. There the cache is effectively read-only -- entries
-       ! filled during serial phases stay stable, so lookups are safe -- and a
-       ! parallel cache miss simply recomputes via the NodalBasisFunctions calls
-       ! above, which are thread-safe (they write only the caller's local
-       ! Basis/dLBasisdx). Trade-off: a type whose assembly rule is first seen
-       ! inside a parallel region with a cold cache recomputes each time rather
-       ! than caching; correctness is unaffected and the nodal basis is cheap.
-       InParallel = .FALSE.
-       !$ InParallel = omp_in_parallel()
-       IF ( .NOT. InParallel ) THEN
-         IF ( ip_slot > 0 ) THEN
-           ip = ip_slot
-         ELSE
-           ip = Element % Type % BasisCacheCount + 1
-         END IF
-
-         IF ( ip <= ELEM_BASIS_CACHE_SIZE ) THEN
-           Element % Type % BasisCacheU(ip) = u
-           Element % Type % BasisCacheV(ip) = v
-           Element % Type % BasisCacheW(ip) = w
-           Element % Type % BasisCache(ip, 1:n)     = Basis(1:n)
-           Element % Type % dBasisCache(ip, 1:n, :) = dLBasisdx(1:n, :)
-           Element % Type % BasisCacheCount = MAX(Element % Type % BasisCacheCount, ip)
-         END IF
+       IF ( ip <= ELEM_BASIS_CACHE_SIZE ) THEN
+         Element % Type % BasisCacheU(ip, tid) = u
+         Element % Type % BasisCacheV(ip, tid) = v
+         Element % Type % BasisCacheW(ip, tid) = w
+         Element % Type % BasisCache(ip, 1:n, tid)     = Basis(1:n)
+         Element % Type % dBasisCache(ip, 1:n, :, tid) = dLBasisdx(1:n, :)
+         Element % Type % BasisCacheCount(tid) = MAX(Element % Type % BasisCacheCount(tid), ip)
        END IF
      END BLOCK RefBasisBlock
 

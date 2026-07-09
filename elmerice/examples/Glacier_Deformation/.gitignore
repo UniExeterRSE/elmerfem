@@ -7,4 +7,8 @@ ice_slab.*.sif
 run_isambard3.slurm
 ice_slab_plan/partitioning*
 ice_slab_plan/ice_cliff_relaxation.result.*
-Results_*
+Results_*/*.pvtu
+Results_*/*.vtu
+Results_*/animation*.mp4
+Results_*/frame*.png
+Results_*/*.pvsm

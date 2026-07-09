@@ -1,6 +1,5 @@
 #!/usr/bin/env pvpython
 import argparse
-from csv import reader
 from typing import Any
 
 import paraview.simple as pvs
@@ -55,7 +54,7 @@ def print_array_table(data_info_obj: Any, label: str) -> None:
     """Pretty-print a table of array metadata for a given data association."""
     n = data_info_obj.GetNumberOfArrays()
     if n == 0:
-        print(f"  (none)")
+        print("  (none)")
         return
 
     # Collect rows first so we can align columns
@@ -92,7 +91,6 @@ def print_cell_type_breakdown(reader: Any) -> None:
     queries cell types via the VTK Python API — compatible with ParaView 6.0.x
     which lacks GetNumberOfCellsOfType() on vtkPVDataInformation.
     """
-    import vtk
 
     dataset = pvs.servermanager.Fetch(reader)
 

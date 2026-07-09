@@ -1,6 +1,6 @@
 # Marine Ice-Cliff Deformation – 3-D ElmerIce experiment
 
-An idealised 3-D ElmerIce experiment studying viscous deformation of a marine- terminating ice cliff. The setup follows the geometry and loading proposed by Crawford et al. (2021) _Nature Communications_ (doi:10.1038/s41467-021-23116-w).
+An idealised 3-D ElmerIce experiment studying viscous deformation of a marine- terminating ice cliff. The setup follows the geometry and loading proposed by Crawford et al. (2021) _Nature Communications_ ([10.1038/s41467-021-23070-7](https://www.nature.com/articles/s41467-021-23070-7)).
 
 Includes longitudinal mesh evolution, ice material properties from Calving3D example
 
@@ -22,15 +22,15 @@ The script `generate_inputs.py` writes all the files required for the model run:
 4. Run `ElmerGrid` to partition the geometry according to the desired number of cores
 5. Copy and adjust `run_isambard3.slurm` according to the desired number of cores
 
-Aftering running this script, the model directory is ready for the slurm job to be submitted with `sbatch run_isambard3.slurm`.
+After running this script, the model directory is ready for the slurm job to be submitted with `sbatch run_isambard3.slurm`.
 
 --------------------------------------------------------------------------------
 
 ## Quick start
 
 ```bash
-# 1\. Generate SIFs from templates + mesh & partitioning + slurm script (using default parameters)
-python generate_inputs.py
+# 1. Generate SIFs from templates + mesh & partitioning + slurm script (using default parameters)
+./generate_inputs.py
 
 # 2a. Run on Isambard3
 sbatch run_isambard3.slurm
@@ -41,27 +41,34 @@ mpirun -np 4 ElmerSolver_mpi ice_slab.sif
 
 ### Custom parameters
 
-List all available options using:
+It is easy to modify the gemoetry or the sea level and many other parameters. List all available command line options using:
 
 ```bash
-python generate_inputs.py --help
+./generate_inputs.py --help
 ```
 
 --------------------------------------------------------------------------------
 
-## Default parameters
 
-| Parameter           | Value        | Description                              |
-| ------------------- | ------------ | ---------------------------------------- |
-| `width`             | 3000 m       | Glacier face width (x-axis)              |
-| `length`            | 4000 m       | Along-flow extent (y-axis)               |
-| `height`            | 1500 m       | Uniform initial ice thickness            |
-| `sea_level`         | 1255 m       | Ocean surface elevation                  |
-| Subaerial cliff     | 245 m        | `height − sea_level`                     |
-| `nx × ny × nz`      | 10 × 20 × 30 | Mesh resolution (plan × extruded levels) |
-| `run_days`          | 300 days     | Simulation length (SIF default)          |
-| `output_every_days` | 10 days      | VTU output frequency (SIF default)       |
-| Timestep            | 1/365 yr     | ≈ 1 day, BDF1                            |
+## Prerequisites
+
+Instruction on setting on the environment and compiling the model executable are given in the Isambard3 documentation; see [Isambard3/README.md](../../Isambard3/README.md) for details.
+
+--------------------------------------------------------------------------------
+
+## Model parameters
+
+| Parameter           | Default      | Units | Description                                          |
+| ------------------- | ------------ | ----- | ---------------------------------------------------- |
+| `width`             | 3000         | m     | Glacier face width (x-axis)                          |
+| `length`            | 4000         | m     | Along-flow extent (y-axis)                           |
+| `height`            | 1500         | m     | Uniform initial ice thickness                        |
+| `sea_level`         | 1255         | m     | Ocean surface elevation                              |
+| Subaerial cliff     | 245          | m     | `height - sea_level`                                 |
+| `nx × ny × nz`      | 10 × 20 × 30 | —     | Mesh resolution (plan × extruded levels)             |
+| `run_days`          | 300          | days  | Simulation length (SIF default)                      |
+| `output_every_days` | 10           | days  | VTU output frequency (SIF default)                   |
+| Timestep            | 1/365        | yr    | ≈ 1 day, BDF1 (first-order backward differentiation) |
 
 --------------------------------------------------------------------------------
 
@@ -88,9 +95,15 @@ x
 
 1. **No-slope, gravity only** -- ice is initially flat (Zs = 1500 m everywhere). Driving stress arises from the unconfined free surface at the calving front rather than a surface slope.
 
-2. **Marine calving front** (BC 3, y = length) -- hydrostatic ocean pressure is applied to the vertical terminus face below sea level. In the provided SIF the sea level is `$sea_level = 1255 m` and the ice surface is initialized to `$height = 1500 m`, giving a 245 m subaerial cliff. The pressure follows:
+2. **Marine calving front** (BC 3, y = length) -- hydrostatic ocean pressure is applied to the vertical terminus face below sea level. In the provided SIF the sea level is `sea_level = 1255 m` and the ice surface is initialized to `height = 1500 m`, giving a 245 m subaerial cliff. The pressure follows:
 
-  $$P_{\mathrm{ocean}}(z)=\begin{cases}\rho_w g (z_{\mathrm{sl}}-z) & z<z_{\mathrm{sl}} \ 0 & z\ge z_{\mathrm{sl}}\end{cases}$$
+$$
+P_{\mathrm{ocean}}(z)=
+\begin{cases}
+\rho_w g (z_{\mathrm{sl}}-z), & z<z_{\mathrm{sl}},\\
+0, & z\ge z_{\mathrm{sl}}.
+\end{cases}
+$$
 
 3. **Basal sliding (bedrock)** -- BC 5 includes the file `BCs/slip_linear.sif`, which implements a linear slip law. Slip coefficients for tangential components increase along flow (y) from 1e2 at the inflow to 1e4 at the terminus (clamped); mass-consistent normals and flow-force BCs are enabled. This is not a simple no-slip bed.
 
@@ -112,14 +125,14 @@ Units: MPa – year – metre (Elmer/Ice standard).
 
 ## Boundary conditions
 
-| BC  | Location   | Condition                                                                                                                                                                                                                                                                                                                                                                                     |
-| --- | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | y = 0      | Back wall -- prescribed inflow: `Velocity 2 (Vy) = $U_inflow` (default 1000); `Velocity 1 (Vx) = 0`. Longitudinal mesh update fields are held fixed here.                                                                                                                                                                                                                                     |
-| 2   | x = width  | Right wall -- no normal flow (`Vx = 0`). Mesh is pinned only in the x-direction (allowing y/z to follow front advance at corners).                                                                                                                                                                                                                                                            |
-| 3   | y = length | Calving front -- hydrostatic ocean pressure applied below sea level; `Flow Force BC` and `Calving Front` enabled. A longitudinal mesh update applies an incremental y-displacement taken from the flow solution (vy _dt); because the MeshSolver subtracts the previous step's field each timestep, this incremental vy_dt BC cancels after the first timestep (see `ice_slab.sif` comments). |
-| 4   | x = 0      | Left wall -- no normal flow (`Vx = 0`), mesh pinned only in x (matches right wall behavior).                                                                                                                                                                                                                                                                                                  |
-| 5   | z = 0      | Bedrock -- includes `BCs/slip_linear.sif` (linear slip). Basal `Slip Coefficient 2` and `Slip Coefficient 3` are MATC expressions varying with coordinate 2 (y), clamped to [1e2, 1e4]. Mass-consistent normals and `Flow Force BC` are enabled.                                                                                                                                              |
-| 6   | z = Zs     | Top free surface -- Body Id = 2; `Top Surface = Equals Zs`; `Pressure = 0`. `Zs` is evolved by the `FreeSurfaceSolver` (ALE formulation).                                                                                                                                                                                                                                                     |
+| BC  | Location   | Condition                                                                                                                                                                                                                                                                                                                                                                                        |
+| --- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | y = 0      | Back wall -- prescribed inflow: `Velocity 2 (Vy) = U_inflow` (default 1000); `Velocity 1 (Vx) = 0`. Longitudinal mesh update fields are held fixed here.                                                                                                                                                                                                                                         |
+| 2   | x = width  | Right wall -- no normal flow (`Vx = 0`). Mesh is pinned only in the x-direction (allowing y/z to follow front advance at corners).                                                                                                                                                                                                                                                               |
+| 3   | y = length | Calving front -- hydrostatic ocean pressure applied below sea level; `Flow Force BC` and `Calving Front` enabled. A longitudinal mesh update applies an incremental y-displacement taken from the flow solution (`vy_dt`); because the MeshSolver subtracts the previous step's field each timestep, this incremental `vy_dt` BC cancels after the first timestep (see `ice_slab.sif` comments). |
+| 4   | x = 0      | Left wall -- no normal flow (`Vx = 0`), mesh pinned only in x (matches right wall behavior).                                                                                                                                                                                                                                                                                                     |
+| 5   | z = 0      | Bedrock -- includes `BCs/slip_linear.sif` (linear slip). Basal `Slip Coefficient 2` and `Slip Coefficient 3` are MATC (Elmer's expression language) expressions varying with coordinate 2 (y), clamped to [1e2, 1e4]. Mass-consistent normals and `Flow Force BC` are enabled.                                                                                                                   |
+| 6   | z = Zs     | Top free surface -- Body Id = 2; `Top Surface = Equals Zs`; `Pressure = 0`. `Zs` is evolved by the `FreeSurfaceSolver` (ALE formulation).                                                                                                                                                                                                                                                        |
 
 External Pressure (BC 3) MATC (from `ice_slab.sif`):
 
@@ -131,19 +144,12 @@ Basal slip coefficient MATC (from `BCs/slip_linear.sif`):
 
 ```
 Slip Coefficient 2 = Variable Coordinate 2
-  Real MATC "max(1.0e2 min(1.0e4 1.0e2 + (1.0e4-1.0e2)*tx/4000))"
+  Real MATC "max(1.0e2, min(1.0e4, 1.0e2 + (1.0e4 - 1.0e2) * tx / 4000))"
 Slip Coefficient 3 = Variable Coordinate 2
-  Real MATC "max(1.0e2 min(1.0e4 1.0e2 + (1.0e4-1.0e2)*tx/4000))"
+  Real MATC "max(1.0e2, min(1.0e4, 1.0e2 + (1.0e4 - 1.0e2) * tx / 4000))"
 ```
 
---------------------------------------------------------------------------------
-
-## Output
-
-Results are written to `./Results.<JOBID>/`:
-
-
-Fields saved: `Pressure`, `Velocity` (vector), `Zs` (free surface elevation).
+Note: `tx(i)` returns the i-th coordinate (zero-based) in MATC expressions; consult SIF/mesh axis ordering if unsure.
 
 --------------------------------------------------------------------------------
 
@@ -151,14 +157,14 @@ Fields saved: `Pressure`, `Velocity` (vector), `Zs` (free surface elevation).
 
 ### Output Files
 
-After the simulation completes, you'll find:
+Results are written to `./Results.<JOBID>/`. Upon successful completion of the simulation, the dircetory will contain:
 
-| File                       | Contents                               |
-| -------------------------- | -------------------------------------- |
-| `ice_cliff_XnpY_tNNNN.vtu` | per-core binary VTU file               |
-| `ice_cliff_tNNNN.pvtu`     | Per-timestep PVTU (ResultOutputSolver) |
+| File                       | Contents                                                |
+| -------------------------- | ------------------------------------------------------- |
+| `ice_cliff_XnpY_tNNNN.vtu` | per-core binary VTU file                                |
+| `ice_cliff_tNNNN.pvtu`     | Per-timestep PVTU files (written by ResultOutputSolver) |
 
-- each `.pvtu` XML-file contains links to the domain-decomposed per-CPU `*.vtu` files containing the actual binary data fields. The relevant XML-snippet in `.pvtu` file looks like this:
+- each `.pvtu` XML-file is a manifest containing references to the domain-decomposed per-CPU `*.vtu` files containing the actual binary data fields. The relevant XML-snippet in a `.pvtu` file looks like this:
 
   ```xml
     <Piece Source="ice_cliff_2np1_t0300.vtu"/>
@@ -199,7 +205,7 @@ paraview Results_2574558/cliff_*.pvtu
 
 For batch rendering on HPC, we use the `render_paraview_animation.py` helper script in `../../Isambard3/` together with a `*.pvsm` state file containing the camera angle and other plotting configurations.
 
-This command:
+The most basic command:
 
 ```bash
 ../../Isambard3/render_paraview_animation.py Results_2574558/ state_velocity.pvsm
@@ -234,4 +240,4 @@ The `render_paraview_animation.py` script supports a rich set of command line op
 
 ## Reference
 
-Crawford, A. J., Benn, D. I., Todd, J., Åström, J. A., Bassis, J. N., & Zwinger, T. (2021). Marine ice-cliff instability modeling shows mixed-mode ice-cliff failure and yields calving rate parameterization. _Nature Communications_, **12**, 2701\. <https://doi.org/10.1038/s41467-021-23116-w>
+Crawford, A. J., Benn, D. I., Todd, J., Åström, J. A., Bassis, J. N., & Zwinger, T. (2021). Marine ice-cliff instability modeling shows mixed-mode ice-cliff failure and yields calving rate parameterization. _Nature Communications_, **12**, 2701\. doi:[10.1038/s41467-021-23070-7](https://www.nature.com/articles/s41467-021-23070-7)

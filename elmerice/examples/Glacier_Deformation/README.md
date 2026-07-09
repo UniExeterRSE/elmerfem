@@ -142,12 +142,91 @@ Slip Coefficient 3 = Variable Coordinate 2
 
 Results are written to `./Results.<JOBID>/`:
 
+
+Fields saved: `Pressure`, `Velocity` (vector), `Zs` (free surface elevation).
+
+--------------------------------------------------------------------------------
+
+## Output and Visualization
+
+### Output Files
+
+After the simulation completes, you'll find:
+
 | File                       | Contents                               |
 | -------------------------- | -------------------------------------- |
 | `ice_cliff_XnpY_tNNNN.vtu` | per-core binary VTU file               |
 | `ice_cliff_tNNNN.pvtu`     | Per-timestep PVTU (ResultOutputSolver) |
 
-Fields saved: `Pressure`, `Velocity` (vector), `Zs` (free surface elevation).
+- each `.pvtu` XML-file contains links to the domain-decomposed per-CPU `*.vtu` files containing the actual binary data fields. The relevant XML-snippet in `.pvtu` file looks like this:
+
+  ```xml
+    <Piece Source="ice_cliff_2np1_t0300.vtu"/>
+    <Piece Source="ice_cliff_2np2_t0300.vtu"/>
+  ```
+
+### Variables Saved
+
+Each VTU file contains the following arrays (as seen in a sample VTU):
+
+- **Point data:**
+
+  - `pressure`: scalar (Float64)
+  - `vonmises`: scalar (Float64)
+  - `stress 1` through `stress 6`: six scalar components (Float64) representing the stress tensor components
+  - `velocity`: vector (Float64, 3 components)
+
+- **Points:** coordinates array (Float64, 3 components)
+
+- **Cells:**
+
+  - `connectivity` (Int32)
+  - `offsets` (Int32)
+  - `types` (Int32)
+
+The VTU uses an appended binary section for the array data; `.pvtu` manifests reference the per-CPU `.vtu` pieces that contain the actual binary fields.
+
+### Visualization
+
+**With ParaView:**
+
+e.g.:
+
+```bash
+paraview Results_2574558/cliff_*.pvtu
+```
+
+### Headless rendering from a saved ParaView state
+
+For batch rendering on HPC, use the helper scripts in `../../Isambard3/`:
+
+```bash
+pvpython ../../Isambard3/render_paraview_animation.py Results_2574558/ state_velocity.pvsm
+```
+
+This workflow is useful because the simulation writes many decomposed `.pvtu`/`.vtu` files. `package_paraview_series.sh` rebuilds a clean `Results/paraview_bundle/`, copies the required precalve files, and writes a `Calving3D_timeseries.pvd` manifest. That manifest defines the exact frame order used by the Calving3D renderer.
+
+The `../../Isambard3/render_paraview_animation.py` interface is different from the Glacier_Deformation helper: its first positional argument is the results source, either a results directory or a `.pvd` manifest, and the second positional argument is the ParaView state file.
+
+Examples:
+
+```bash
+# Let the renderer search the results tree for *timeseries*.pvd first
+pvpython ../../Isambard3/render_paraview_animation.py Results paraview_state.pvsm
+
+# Render directly from the packaged bundle manifest
+pvpython ../../Isambard3/render_paraview_animation.py \
+  Results/paraview_bundle/Calving3D_timeseries.pvd \
+  paraview_state.pvsm
+
+# Export selected PNG frames instead of an MP4
+pvpython ../../Isambard3/render_paraview_animation.py \
+  Results/paraview_bundle/Calving3D_timeseries.pvd \
+  paraview_state.pvsm \
+  --render frames --frame-indices 0,50,100
+```
+
+When a directory is given as the first argument, the renderer searches recursively for a unique `*timeseries*.pvd`. If none is found, it falls back to the top-level `.pvtu`/`.vtu` files in that directory only.
 
 --------------------------------------------------------------------------------
 

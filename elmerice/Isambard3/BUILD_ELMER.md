@@ -1,4 +1,4 @@
-# Running the ElmerIce examples on Isambard3
+# Build the `elmerice` executables on Isambard3
 
 Isambard3 uses Grace (ARM Neoverse V2) nodes with the Cray Programming Environment.
 
@@ -6,13 +6,17 @@ Isambard3 uses Grace (ARM Neoverse V2) nodes with the Cray Programming Environme
 
 ElmerIce is built from the top-level ElmerFEM source tree with ElmerIce, Mumps (sparse direct solver), and Hypre (iterative solver) enabled. Two dependencies not available as system modules -- Mumps and Hypre -- are managed via Spack.
 
+## Prerequisites
+
+First, create the customised `elmerice` conda envinonment. See [CONDA_ENV.md](CONDA_ENV.md) for instructions.
+
 ## Files
 
-File                             | Purpose
--------------------------------- | ---------------------------------------------------------------------------------------------------------
-`spack.yaml`                     | Spack environment definition -- specifies Mumps and Hypre with all Cray PE external package configuration
-`spack.lock`                     | Pinned concrete versions resolved by the concretizer
-`build_elmerice_isambard3.slurm` | SLURM batch script that installs dependencies and builds ElmerIce
+| File                             | Purpose                                                                                                   |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `spack.yaml`                     | Spack environment definition -- specifies Mumps and Hypre with all Cray PE external package configuration |
+| `spack.lock`                     | Pinned concrete versions resolved by the concretizer                                                      |
+| `build_elmerice_isambard3.slurm` | SLURM batch script that installs dependencies and builds ElmerIce                                         |
 
 ## Prerequisites
 
@@ -42,9 +46,9 @@ spack install
 
 Because `spack.lock` is present, `spack install` will use the pinned concretization in the lockfile and install those exact specs.
 
-See (SPACK_ENV.md)[SPACK_ENV.md] for
+See (SPACK_ENV.md)[SPACK_ENV.md] for a detailed discussion on this environment.
 
-## Build `elmerice` executable
+## Run the build job
 
 Submit the SLURM job from the repository root directory:
 

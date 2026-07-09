@@ -167,24 +167,23 @@ After the simulation completes, you'll find:
 
 ### Variables Saved
 
-Each VTU file contains the following arrays (as seen in a sample VTU):
+The manifests in the `.pvtu` files only reference the per-CPU `.vtu` files containing the binary fields, and these binary files can be inspected with a helper script:
 
-- **Point data:**
+```bash
+../../Isambard3/list_vtu.py Results_2574558/ice_cliff_2np1_t0001.vtu 
+```
 
-  - `pressure`: scalar (Float64)
-  - `vonmises`: scalar (Float64)
-  - `stress 1` through `stress 6`: six scalar components (Float64) representing the stress tensor components
-  - `velocity`: vector (Float64, 3 components)
+Each VTU file contains the following:
 
-- **Points:** coordinates array (Float64, 3 components)
+- **Point data arrays:**
+  
+| Name          | DType   | Components | Range        |
+| :------------ | :------ | :--------- | :----------- |
+| pressure      | float64 | scalar     | 1 component  |
+| zs            | float64 | scalar     | 1 component  |
+| velocity      | float64 | vector     | 3 components |
+| mesh velocity | float64 | vector     | 3 components |
 
-- **Cells:**
-
-  - `connectivity` (Int32)
-  - `offsets` (Int32)
-  - `types` (Int32)
-
-The VTU uses an appended binary section for the array data; `.pvtu` manifests reference the per-CPU `.vtu` pieces that contain the actual binary fields.
 
 ### Visualization
 
@@ -198,35 +197,38 @@ paraview Results_2574558/cliff_*.pvtu
 
 ### Headless rendering from a saved ParaView state
 
-For batch rendering on HPC, use the helper scripts in `../../Isambard3/`:
+For batch rendering on HPC, we use the `render_paraview_animation.py` helper script in `../../Isambard3/` together with a `*.pvsm` state file containing the camera angle and other plotting configurations.
+
+This command:
 
 ```bash
-pvpython ../../Isambard3/render_paraview_animation.py Results_2574558/ state_velocity.pvsm
+../../Isambard3/render_paraview_animation.py Results_2574558/ state_velocity.pvsm
 ```
+will write:
+- `Results_2574558/animation.mp4` (the animation of the model sequence)
+- `Results_2574558/frame.0000.png`-`frame.0300.png` (individual frames)
 
-This workflow is useful because the simulation writes many decomposed `.pvtu`/`.vtu` files. `package_paraview_series.sh` rebuilds a clean `Results/paraview_bundle/`, copies the required precalve files, and writes a `Calving3D_timeseries.pvd` manifest. That manifest defines the exact frame order used by the Calving3D renderer.
 
-The `../../Isambard3/render_paraview_animation.py` interface is different from the Glacier_Deformation helper: its first positional argument is the results source, either a results directory or a `.pvd` manifest, and the second positional argument is the ParaView state file.
+Three state files are supplied here:
+ - `state_velocity.pvsm` (visualising the Y-velocity)
+ - `state_pressure.pvsm` (visualising the pressure field)
+ - `state_meshvelocity.pvsm` (visualising the mesh velocity field)
 
-Examples:
+The `render_paraview_animation.py` script supports a rich set of command line options. Type `render_paraview_animation.py --help` to see all of them.
+
+**Here are some examples:**
+
+ - Change the output filenames, as to avoid renderings using different state files from overwriting previous output:
 
 ```bash
-# Let the renderer search the results tree for *timeseries*.pvd first
-pvpython ../../Isambard3/render_paraview_animation.py Results paraview_state.pvsm
-
-# Render directly from the packaged bundle manifest
-pvpython ../../Isambard3/render_paraview_animation.py \
-  Results/paraview_bundle/Calving3D_timeseries.pvd \
-  paraview_state.pvsm
-
-# Export selected PNG frames instead of an MP4
-pvpython ../../Isambard3/render_paraview_animation.py \
-  Results/paraview_bundle/Calving3D_timeseries.pvd \
-  paraview_state.pvsm \
-  --render frames --frame-indices 0,50,100
+../../Isambard3/render_paraview_animation.py Results_2574558/ state_velocity.pvsm --anim-output animation_velocity.mp4 --frame-output frames_velocity
 ```
 
-When a directory is given as the first argument, the renderer searches recursively for a unique `*timeseries*.pvd`. If none is found, it falls back to the top-level `.pvtu`/`.vtu` files in that directory only.
+ - Supress the writing of the `frames.XXXX.png` files, keeping only the animation:
+  
+```bash
+../../Isambard3/render_paraview_animation.py Results_2574558/ state_velocity.pvsm --render animation --anim-output animation_velocity.mp4
+```
 
 --------------------------------------------------------------------------------
 

@@ -1,0 +1,20 @@
+name: base
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - conda
+  - mamba[version='>=2.4.0']
+  - pip
+  - nano
+  - silx
+  - numpy
+  - netcdf4
+  - vtk
+  - paraview
+  - viu
+  - pyncview
+  - gmsh
+  - ffmpeg
+  - tree
+prefix: /home/e5i/fwobus.e5i/miniforge3

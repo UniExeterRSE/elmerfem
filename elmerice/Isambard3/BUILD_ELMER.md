@@ -46,7 +46,7 @@ spack install
 
 Because `spack.lock` is present, `spack install` will use the pinned concretization in the lockfile and install those exact specs.
 
-See (SPACK_ENV.md)[SPACK_ENV.md] for a detailed discussion on this environment.
+See [SPACK_ENV.md](SPACK_ENV.md) for a detailed discussion on this environment.
 
 ## Run the build job
 

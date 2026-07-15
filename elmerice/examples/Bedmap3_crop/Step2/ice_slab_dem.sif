@@ -1,0 +1,360 @@
+check keywords warn
+echo on
+
+!---------------------------------------------------------
+! DEM-based geometry restart + original ice_slab physics
+!---------------------------------------------------------
+$yearinsec = 365.25 * 24.0 * 60.0 * 60.0
+$rhoi = 910.0 / (1.0e6 * yearinsec^2)
+$rhow = 1025.0 / (1.0e6 * yearinsec^2)
+$gravity = -9.81 * yearinsec^2
+
+$U_inflow = -1000.0
+$sea_level = 1245.0
+! Keep a sub-daily step for cliff/ALE stability, but match
+! Glacier_Deformation_inflow_clean/ice_slab.sif VTU cadence:
+!   clean: dt=1 day, Result Output after every timestep -> daily VTUs
+!   here:  dt=0.1 day, save every 10 steps -> daily VTUs
+! Full run still 300 days (same as clean).
+$dt = 0.1/365.0
+$nsteps = 3000
+$output_every = 10
+
+Header
+  Mesh DB "." "PlanMeshDEM"
+  Results Directory "./Results"
+End
+
+Constants
+  Water Density = Real $rhow
+  Sea Level = Real $sea_level
+  Bottom Surface Name = String "Zs Bottom"
+End
+
+Simulation
+  Coordinate System = "Cartesian 3D"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Transient"
+  include "Step1/Extrusion.sif"
+  Timestepping Method = "BDF"
+  BDF Order = 1
+  Timestep Intervals = $nsteps
+  Output Intervals = $output_every
+  Timestep Sizes = Real $dt
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Initialize Dirichlet Conditions = Logical False
+  Set Dirichlet BCs By BC Numbering = Logical True
+  Output Coordinates = Logical True
+
+  Restart File = "geom_init.result"
+  Restart Position = 0
+  Restart Before Initial Conditions = Logical True
+
+  Output File = "ice_cliff_relaxation.result"
+  Post File = "ice_cliff_relaxation.vtu"
+  max output level = 4
+End
+
+Body 1
+  Name = "Glacier Ice"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name = "Bed"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 2
+End
+
+Body 3
+  Name = "Top Free Surface"
+  Equation = 2
+  Material = 1
+  Body Force = 2
+  Initial Condition = 3
+End
+
+Initial Condition 1
+  Pressure = Real 0.0
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+  Velocity 3 = Real 0.0
+End
+
+Initial Condition 2
+  Zs Bottom = Equals bedDEM
+  Reference Zs Bottom = Equals bedDEM
+End
+
+Initial Condition 3
+  Zs Top = Equals surfDEM
+  Reference Zs Top = Equals surfDEM
+End
+
+Body Force 1
+  Flow BodyForce 1 = Real 0.0
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $gravity
+End
+
+Body Force 2
+  Zs Top Accumulation Flux 1 = Real 0.0
+  Zs Top Accumulation Flux 2 = Real 0.0
+End
+
+Material 1
+  Density = Real $rhoi
+  Viscosity Model = String "Glen"
+  Viscosity = Real $1.0E13*yearinsec*1.0E-6
+  Glen Exponent = Real 3.0
+  Rate Factor 1 = Real 1.258e13
+  Rate Factor 2 = Real 6.046e28
+  Activation Energy 1 = Real 60e3
+  Activation Energy 2 = Real 139e3
+  Glen Enhancement Factor = Real 1.0
+  Limit Temperature = Real -10.0
+  Constant Temperature = Real -20.0
+  Critical Shear Rate = Real 1.0E-10
+  Sea level = Real $sea_level
+  Cauchy = Logical True
+  Youngs Modulus = Real 1.0
+  Poisson Ratio = Real 0.3
+  Min Zs Top = Variable Coordinate 3, Elevation
+    Real MATC "tx(0) - tx(1) + 10.0"
+  Min Zs Bottom = Equals bedDEM
+End
+
+Solver 1
+  Equation = "MapCoordinate"
+  Exec Solver = "Before Timestep"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 3
+  Displacement Mode = Logical False
+  ! Follow evolving free surface (not the fixed initial DEM).
+  Correct Surface = Logical True
+  Minimum Height = Real 10.0
+  Top Surface Variable Name = String "Zs Top"
+  Bottom Surface Variable Name = String "bedDEM"
+  Mesh Velocity First Zero = Logical True
+  Recompute Stabilization = Logical True
+End
+
+Solver 2
+  Equation = "Elevation"
+  Exec Solver = "Before TimeStep"
+  Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+  Variable = String "Elevation"
+  Variable DOFs = 1
+  Gradient = Real 1.0E00
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 300
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0E-6
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 0
+End
+
+Solver 3
+  Equation = "Normal vector"
+  Variable = "Normal Vector[normal:3]"
+  Exec Solver = "Before Timestep"
+  Variable DOFs = 3
+  Optimize Bandwidth = Logical False
+  Procedure = File "ElmerIceSolvers" "ComputeNormalSolver"
+  ComputeAll = Logical False
+End
+
+Solver 4
+  Equation = "Navier-Stokes"
+  Stabilization Method = String "Stabilized"
+  Flow Model = String "Stokes"
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 100
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+Solver 5
+  Equation = "Free Surface Top"
+  Variable = "Zs Top"
+  Variable DOFs = 1
+  Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
+  Apply Dirichlet = Logical True
+  ALE Formulation = Logical True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU4
+  Linear System Max Iterations = 1500
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Abort Not Converged = False
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Min Iterations = 2
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Relaxation Factor = 0.40
+  Steady State Convergence Tolerance = 1.0e-4
+  Stabilization Method = Bubbles
+  Flow Solution Name = String "Flow Solution"
+  Exported Variable 1 = "Zs Top Residual"
+  Exported Variable 1 DOFs = 1
+  Exported Variable 2 = "Reference Zs Top"
+  Exported Variable 2 DOFs = 1
+End
+
+Solver 6
+  Equation = "Vertical Mesh Update"
+  Procedure = "MeshSolve" "MeshSolver"
+  Exec Solver = "After Timestep"
+  Variable = Vertical Mesh Update
+  Variable DOFs = 3
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU1
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Abort Not Converged = False
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-06
+  First Time Non-Zero = Logical True
+End
+
+Solver 7
+  Equation = "Longitudinal Mesh Update"
+  Procedure = File "MeshSolve1" "MeshSolver"
+  Exec Solver = "After Timestep"
+  Variable = Longitudinal Mesh Update
+  Variable DOFs = 3
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU1
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Abort Not Converged = False
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-06
+  First Time Non-Zero = Logical True
+End
+
+Solver 8
+  Exec Solver = "after saving"
+  Equation = "Result Output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = "ice_cliff"
+  Output Format = "vtu"
+  Vtu Format = Logical True
+  Scalar Field 1 = String "Pressure"
+  Scalar Field 2 = String "Zs Top"
+  Vector Field 1 = String "Velocity"
+  Vector Field 2 = String "Mesh Velocity"
+End
+
+Equation 1
+  Name = "Ice Flow"
+  Active Solvers(7) = 1 2 3 4 6 7 8
+  ALE Formulation = Logical True
+  Convection = Computed
+  Flow Solution Name = String "Flow Solution"
+End
+
+Equation 2
+  Name = "Top Surface Evolution"
+  Active Solvers(1) = 5
+  Convection = Computed
+  Flow Solution Name = String "Flow Solution"
+End
+
+! Boundary numbering matches ice_slab.sif / Calving3D:
+! 1 right sidewall, 2 inflow/backwall, 3 left sidewall, 4 calving front
+Boundary Condition 1
+  Name = "Right Sidewall"
+  Target Boundaries = 1
+  Flow Force BC = Logical True
+  Normal-Tangential Velocity = Logical True
+  Normal-Tangential Flow Solution = Logical True
+  Mass Consistent Normals = Logical True
+  ComputeNormal = Logical True
+  Velocity 1 = Real 0.0
+  Longitudinal Mesh Update 3 = Real 0.0
+  Zs Bottom = Equals Reference Zs Bottom
+End
+
+Boundary Condition 2
+  Name = "Inflow"
+  Target Boundaries = 2
+  Flow Force BC = Logical True
+  Normal-Tangential Velocity = Logical True
+  Normal-Tangential Flow Solution = Logical True
+  ComputeNormal = Logical True
+  Velocity 1 = Real $U_inflow
+  Velocity 2 = Real 0.0
+  Longitudinal Mesh Update 1 = Real 0.0
+  Longitudinal Mesh Update 2 = Real 0.0
+  Longitudinal Mesh Update 3 = Real 0.0
+  Zs Top = Equals Reference Zs Top
+  Zs Bottom = Equals Reference Zs Bottom
+End
+
+Boundary Condition 3
+  Name = "Left Sidewall"
+  Target Boundaries = 3
+  Flow Force BC = Logical True
+  Normal-Tangential Velocity = Logical True
+  Normal-Tangential Flow Solution = Logical True
+  Mass Consistent Normals = Logical True
+  ComputeNormal = Logical True
+  Velocity 1 = Real 0.0
+  Longitudinal Mesh Update 3 = Real 0.0
+  Zs Bottom = Equals Reference Zs Bottom
+End
+
+Boundary Condition 4
+  Name = "Calving Front"
+  Target Boundaries = 4
+  Flow Force BC = Logical True
+  External Pressure = Variable Coordinate 1
+    Real Procedure "ElmerIceUSF" "SeaPressure"
+  Compute Sea Pressure = Logical True
+  Longitudinal Mesh Update 1 = Variable Velocity 1, Longitudinal Mesh Update 1
+    Real MATC "tx(1) + tx(0)*dt"
+  Longitudinal Mesh Update 2 = Variable Velocity 2, Longitudinal Mesh Update 2
+    Real MATC "tx(1) + tx(0)*dt"
+  Longitudinal Mesh Update 3 = Real 0.0
+End
+
+Boundary Condition 5
+  Name = "Bedrock"
+  include Step2/BCs/slip_linear.sif
+  Target Boundaries = 5
+  Bottom Surface Mask = Logical True
+  Bottom Surface = Equals bedDEM
+  Body Id = 2
+  ComputeNormal = Logical True
+  Elevation = Real 0.0
+  Zs Bottom = Equals bedDEM
+End
+
+Boundary Condition 6
+  Name = "Top Surface"
+  Target Boundaries = 6
+  Top Surface Mask = Logical True
+  Top Surface = Equals Zs Top
+  Body Id = 3
+  Normal-Tangential Velocity = Logical True
+  Normal-Tangential Flow Solution = Logical True
+  Depth = Real 0.0
+  Flow Force BC = Logical True
+  ComputeNormal = Logical True
+  Vertical Mesh Update 3 = Variable Zs Top, Reference Zs Top
+    Real MATC "tx(0) - tx(1)"
+  Longitudinal Mesh Update 3 = Real 0.0
+End

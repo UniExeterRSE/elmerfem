@@ -1,0 +1,87 @@
+check keywords warn
+echo on
+
+Header
+  Mesh DB "." "PlanMeshDEM"
+End
+
+Simulation
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady
+
+  include Extrusion.sif
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Output File = "geom_init.result"
+  Post File = "geom_init.vtu"
+  max output level = 3
+End
+
+Body 1
+  Equation = 1
+End
+
+Solver 1
+  Exec Solver = "Before Simulation"
+  Equation = "Read DEMs"
+  Variable = -nooutput "dummy"
+  Procedure = "GridDataReader" "GridDataReader"
+
+  Filename = File "Block_DEM.nc"
+  X Dim Name = File "x"
+  Y Dim Name = File "y"
+  X Var Name = File "X"
+  Y Var Name = File "Y"
+
+  X Epsilon = Real 1.0e-2
+  Y Epsilon = Real 1.0e-2
+  Time Epsilon = Real 0.01
+
+  Interpolation Bias = Real 0.0
+  Interpolation Multiplier = Real 1.0
+  Is Time Counter = Logical False
+
+  Variable 1 = File "bedDEM"
+  Variable 2 = File "surfDEM"
+  Exported Variable 1 = "bedDEM"
+  Exported Variable 2 = "surfDEM"
+End
+
+Solver 2
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 3
+  Displacement Mode = Logical False
+  Correct Surface = Logical True
+  Minimum Height = Real 1.0
+  Top Surface Variable Name = String "surfDEM"
+  Bottom Surface Variable Name = String "bedDEM"
+End
+
+Solver 3
+  Equation = "NormalVector"
+  Procedure = "ElmerIceSolvers" "ComputeNormalSolver"
+  Variable = "Normal Vector"
+  Variable DOFs = 3
+  Optimize Bandwidth = Logical False
+  ComputeAll = Logical False
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+End
+
+Boundary Condition 2
+  Name = "bed"
+  ComputeNormal = Logical True
+End
+
+Boundary Condition 3
+  Name = "upper surface"
+End

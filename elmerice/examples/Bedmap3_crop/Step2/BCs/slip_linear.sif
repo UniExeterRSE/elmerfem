@@ -1,0 +1,10 @@
+
+Normal-Tangential Velocity = Logical True
+Mass Consistent Normals = Logical True
+Flow Force BC = Logical True
+
+Velocity 1 = Real 0.0e0
+Slip Coefficient 2 = Variable Coordinate 2
+  Real MATC "max(1.0e1 min(5.0e2 1.0e1 + (5.0e2-1.0e1)*(4000.0-tx)/4000.0))"
+Slip Coefficient 3 = Variable Coordinate 2
+  Real MATC "max(1.0e1 min(5.0e2 1.0e1 + (5.0e2-1.0e1)*(4000.0-tx)/4000.0))"

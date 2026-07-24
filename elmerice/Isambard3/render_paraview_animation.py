@@ -57,11 +57,18 @@ except ImportError:
 # PVSM path rewriting
 # ---------------------------------------------------------------------------
 
+supported_extensions = (".pvtu", ".vtu", ".vtkhdf")
+supported_extension_str = "/".join([f"*{e}" for e in supported_extensions])
+
 
 def _natural_frame_key(path: pathlib.Path) -> int:
-    """Extract the timestep number from a *_tNNNN.pvtu filename for sorting."""
-    match = re.search(r"_t(\d+)$", path.stem)
-    return int(match.group(1)) if match else 0
+    """
+    Return the integer frame number extracted from a path stem, or -1 if none.
+    Used for sorting frame files in natural order
+    (e.g. frame_1.vtu, frame_2.pvtu, ..., frame_9.vtu, frame_10.pvtu, ..., frame_100.pvtu).
+    """
+    match = re.search(r"(\d+)$", path.stem)
+    return int(match.group(1)) if match else -1
 
 
 def _find_result_frames(
@@ -71,7 +78,7 @@ def _find_result_frames(
 
     When *pvd_file* is provided, the files are read in manifest order from the
     PVD collection written by package_paraview_series.sh. Otherwise the frames
-    fall back to a numeric sort of all *.pvtu/*.vtu files in *results_dir*.
+    fall back to a numeric sort of all *.pvtu/*.vtu/*.vtkhdf files in *results_dir*.
     """
     if pvd_file is not None:
         try:
@@ -97,13 +104,12 @@ def _find_result_frames(
             raise RuntimeError(f"No *.pvtu entries found in PVD manifest {pvd_file}")
         return files
 
-    pvtu_files = sorted(results_dir.glob("*.pvtu"), key=_natural_frame_key)
-    if pvtu_files:
-        return pvtu_files
-    vtu_files = sorted(results_dir.glob("*.vtu"), key=_natural_frame_key)
-    if not vtu_files:
-        raise RuntimeError(f"No *.pvtu or *.vtu files found in {results_dir}")
-    return vtu_files
+    for ext in supported_extensions:
+        files = sorted(results_dir.glob(f"*{ext}"), key=_natural_frame_key)
+        if files:
+            return files
+
+    raise RuntimeError(f"No {supported_extension_str} files found in {results_dir}")
 
 
 def _find_single_timeseries_pvd(candidate_dir: pathlib.Path) -> pathlib.Path | None:
@@ -133,7 +139,7 @@ def _resolve_results_input(
     directory, the function searches recursively for a unique
     ``*timeseries*.pvd`` anywhere below it. If none is found, the directory is
     kept as the results directory and frame discovery later falls back to a
-    non-recursive scan of ``*.pvtu``/``*.vtu`` files in that directory.
+    non-recursive scan of ``*.`pvtu```/``*.vtu``/``*.vtkhdf`` files in that directory.
     """
     if not input_path.exists():
         sys.exit(f"Error: results/PVD input not found: {input_path}")
@@ -200,13 +206,14 @@ def _find_proxy_property(proxy, name: str):
 
 
 def _iter_reader_filename_properties(root):
-    """Yield ``(proxy, file_name_property)`` for reader proxies with FileName."""
+    """Yield ``(proxy, file_name_property)`` for reader proxies with FileName or FileNames."""
     for proxy in root.iter("Proxy"):
-        if proxy.get("type") not in {"XMLPUnstructuredGridReader", "PVDReader"}:
-            continue
-        fn_prop = _find_proxy_property(proxy, "FileName")
-        if fn_prop is not None:
-            yield proxy, fn_prop
+        # Look for standard ParaView filename property names
+        for prop_name in ("FileName", "FileNames"):
+            fn_prop = _find_proxy_property(proxy, prop_name)
+            if fn_prop is not None:
+                yield proxy, fn_prop
+                break
 
 
 def _set_property_values(
@@ -244,6 +251,7 @@ def rewrite_pvsm_for_results(
     """
     frames = _find_result_frames(results_dir, pvd_file=pvd_file)
     new_paths = [str(frame.as_posix()) for frame in frames]
+    print(f"\nRewriting state file with new_paths: {new_paths}")
     n_frames = len(new_paths)
     timestep_values = [str(i) for i in range(n_frames)]
     end_time = str(max(n_frames - 1, 0))
@@ -281,7 +289,7 @@ def rewrite_pvsm_for_results(
         old_values = [
             elem.get("value", "")
             for elem in fn_prop.findall("Element")
-            if _bare_filename(elem.get("value", "")).endswith((".pvtu", ".vtu"))
+            if _bare_filename(elem.get("value", "")).endswith(supported_extensions)
         ]
         if not old_values:
             continue
@@ -389,7 +397,7 @@ def _ensure_pvsm_path_compatibility(
                 sample_paths.append(val)
 
     if not sample_paths:
-        return state_file
+        raise RuntimeError(f"No dataset file entries found in state file: {state_file}")
 
     windows_paths = [
         p for p in sample_paths if re.match(r"[A-Za-z]:[/\\]", p) or "\\" in p
@@ -477,7 +485,7 @@ def parse_args():
             "Results directory or PVD time-series manifest. If a directory is "
             "given, the script searches recursively for a unique "
             "*timeseries*.pvd file below it; if none is found, it falls back to "
-            "non-recursive *.pvtu/*.vtu discovery in that directory."
+            f"non-recursive {supported_extension_str} discovery in that directory."
         ),
     )
 
@@ -994,6 +1002,8 @@ def main():
     ) = parse_args()
     render_mode = args.render
 
+    print(f"args={args}")
+
     # Fail fast on ffmpeg/output issues before ParaView touches the state file.
     ffmpeg = None
     if render_mode in ("animation", "both"):
@@ -1013,6 +1023,7 @@ def main():
         state_file, results_dir, pvd_file=pvd_file
     )
     _check_pvsm_input_files_exist(state_file)
+    print(f"_check_pvsm_input_files_exist({state_file}) passed")
 
     # Enable offscreen rendering BEFORE importing paraview.simple so that the
     # render window is created in offscreen mode from the start.  This is the
@@ -1038,7 +1049,7 @@ def main():
     if pvd_file is not None:
         print(f"Series file: {pvd_file}")
     else:
-        print("Series file: none found; using local *.pvtu/*.vtu files")
+        print(f"Series file: none found; using local {supported_extension_str} files")
     print(f"State file:  {state_file}")
     print(f"Render mode: {render_mode}")
     if animation_output:

@@ -51,7 +51,7 @@ mamba env create -n elmerice -f <(grep -v '^prefix:' environment_history.yml)
 
 ```bash
 mamba create -n elmerice -c conda-forge \
-  python=3.12 mamba pip nano silx numpy netcdf4 vtk paraview viu pyncview gmsh ffmpeg tree
+  python=3.12 mamba pip numpy netcdf4 vtk paraview gmsh ffmpeg nano tree
 ```
 
 ## Activate the environment
@@ -71,6 +71,7 @@ After activation, confirm the version of Python version and of a key package:
 ```bash
 python -V
 python -c "import vtk; print(vtk.__version__)"
+python -c "import pyvista; print(pyvista.__version__)"
 ```
 
 To capture an environment file suitable for sharing or CI, export without build strings:

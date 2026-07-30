@@ -4,7 +4,8 @@ ice_slab_plan.grd
 ice_slab.sif
 BCs/slip_linear.sif
 ice_slab.*.sif
-run_isambard3.slurm
+ice_slab_*.sif
+run_elmerice_isambard3_*.slurm
 ice_slab_plan/partitioning*
 ice_slab_plan/ice_cliff_relaxation.result.*
 Results_*/*.pvtu

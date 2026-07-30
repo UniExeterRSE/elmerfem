@@ -33,10 +33,10 @@ After running this script, the model directory is ready for the slurm job to be 
 ./generate_inputs.py
 
 # 2a. Run on Isambard3
-sbatch run_isambard3.slurm
+sbatch run_elmerice_isambard3_h1500.slurm
 
 # 2b. Run locally
-mpirun -np 4 ElmerSolver_mpi ice_slab.sif
+mpirun -np 4 ElmerSolver_mpi ice_slab_h1500.sif
 ```
 
 ### Custom parameters
@@ -58,17 +58,17 @@ Instruction on setting on the environment and compiling the model executable are
 
 ## Model parameters
 
-| Parameter           | Default      | Units | Description                                          |
-| ------------------- | ------------ | ----- | ---------------------------------------------------- |
-| `width`             | 3000         | m     | Glacier face width (x-axis)                          |
-| `length`            | 4000         | m     | Along-flow extent (y-axis)                           |
-| `height`            | 1500         | m     | Uniform initial ice thickness                        |
-| `sea_level`         | 1255         | m     | Ocean surface elevation                              |
-| Subaerial cliff     | 245          | m     | `height - sea_level`                                 |
-| `nx × ny × nz`      | 10 × 20 × 30 | —     | Mesh resolution (plan × extruded levels)             |
-| `run_days`          | 300          | days  | Simulation length (SIF default)                      |
-| `output_every_days` | 10           | days  | VTU output frequency (SIF default)                   |
-| Timestep            | 1/365        | yr    | ≈ 1 day, BDF1 (first-order backward differentiation) |
+| Parameter           | Default      | Units | Description                                                                  |
+| ------------------- | ------------ | ----- | ---------------------------------------------------------------------------- |
+| `width`             | 3000         | m     | Glacier face width (x-axis)                                                  |
+| `length`            | 4000         | m     | Along-flow extent (y-axis)                                                   |
+| `height`            | 1500         | m     | Uniform initial ice thickness                                                |
+| `sea_level`         | calculated   | m     | Ocean surface elevation (automatically adjusted to hydrostatic equilibirium) |
+| Subaerial cliff     | calculated   | m     | `height - sea_level`                                                         |
+| `nx × ny × nz`      | 10 × 20 × 30 | —     | Mesh resolution (plan × extruded levels)                                     |
+| `run_days`          | 300          | days  | Simulation length (SIF default)                                              |
+| `output_every_days` | 10           | days  | VTU output frequency (SIF default)                                           |
+| Timestep            | 1/365        | yr    | ≈ 1 day, BDF1 (first-order backward differentiation)                         |
 
 --------------------------------------------------------------------------------
 
@@ -83,7 +83,7 @@ x
  │    Ice (Full Stokes)     │  z
  │    ρ_i = 910 kg/m³       │  ↑
  │    Glen n = 3            │  |
- │                          │  |  z = sea_level = 1255 m  ← ocean pressure
+ │                          │  |  z = sea_level = 1331 m  ← ocean pressure
  │──────────────────────────│  |  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  │         ocean →          │  |
  └──────────────────────────┘  0
@@ -95,7 +95,7 @@ x
 
 1. **No-slope, gravity only** -- ice is initially flat (Zs = 1500 m everywhere). Driving stress arises from the unconfined free surface at the calving front rather than a surface slope.
 
-2. **Marine calving front** (BC 3, y = length) -- hydrostatic ocean pressure is applied to the vertical terminus face below sea level. In the provided SIF the sea level is `sea_level = 1255 m` and the ice surface is initialized to `height = 1500 m`, giving a 245 m subaerial cliff. The pressure follows:
+2. **Marine calving front** (BC 3, y = length) -- hydrostatic ocean pressure is applied to the vertical terminus face below sea level. For the default ice slab `height = 1500 m`, sea level is automatically adjusted to hydrostatic equilibrium based on the ice and sea water densities (sea_level = (rho_ice / rho_water) x height), resulting in  `sea_level = 1331.707 m` and a 168.293 m subaerial cliff (for values of rho_ice=910 and rho_water=1025). The pressure follows:
 
 $$
 P_{\mathrm{ocean}}(z)=

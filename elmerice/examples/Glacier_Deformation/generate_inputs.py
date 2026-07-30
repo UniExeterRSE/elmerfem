@@ -61,8 +61,19 @@ import subprocess
 import sys
 import textwrap
 from collections.abc import Callable
+from math import ceil
 from pathlib import Path
 from typing import Any
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+CORES_PER_NODE = 144  # Isambard3 has 144 cores per node
+
+SIF_TEMPLATE_DEFAULT: Path = Path("ice_slab.sif.template")
+BC_SLIP_TEMPLATE_DEFAULT = Path("BCs/slip_linear.sif.template")
+SLURM_TEMPLATE_DEFAULT: Path = Path("../../Isambard3/run_elmerice_isambard3.slurm")
 
 # ---------------------------------------------------------------------------
 # Template rendering
@@ -422,6 +433,29 @@ def clean_generated_files() -> None:
     print("Clean complete.")
 
 
+def read_densities(sif_file: Path) -> tuple[float, float]:
+    """Read ice and seawater densities from the model sif-file.
+
+    Returns:
+        (rhoi, rhow) in kg/m^3.
+    """
+    text = sif_file.read_text()
+
+    def extract_density(name: str) -> float:
+        match = re.search(
+            rf"\${name}\s*=\s*([0-9.]+)",
+            text,
+        )
+        if not match:
+            raise ValueError(f"Could not find {name} in {sif_file}")
+        return float(match.group(1))
+
+    rhoi = extract_density("rhoi")
+    rhow = extract_density("rhow")
+
+    return rhoi, rhow
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -432,14 +466,15 @@ def main() -> None:
         description=(
             "Generate ElmerIce input files for the 3-D marine ice-cliff "
             "deformation benchmark (Crawford et al. 2021).\n\n"
-            "Values are substituted into ice_slab.sif.template; all other "
+            f"Values are substituted into {SIF_TEMPLATE_DEFAULT}; all other "
             "content (physics, solvers, BCs) is preserved verbatim."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=textwrap.dedent("""\
+        epilog=textwrap.dedent(
+            f"""\
             Examples
             --------
-            Default (3000 m x 4000 m x 1500 m, sea level at 1255 m, inflow 1000 m/yr):
+            Default (3000 m x 4000 m x 1500 m, 10x20 grid, 30 levels, sea level at 1255 m, inflow 1500 m/yr):
               python generate_inputs.py
 
             Deeper submergence:
@@ -451,39 +486,43 @@ def main() -> None:
             Longer run:
               python generate_inputs.py --run-days 300 --output-every 10
 
-            Custom template location:
-              python generate_inputs.py --template path/to/my.sif.template
-        """),
+            Custom sif template location (other than {SIF_TEMPLATE_DEFAULT}):
+              python generate_inputs.py ... --sif-template path/to/my.sif.template
+
+            Custom BC slip template location (other than {BC_SLIP_TEMPLATE_DEFAULT}):
+              python generate_inputs.py ... --slip-template path/to/my.slip.template
+            
+            Custom slurm template location (other than {SLURM_TEMPLATE_DEFAULT}):
+              python generate_inputs.py ... --slurm-template path/to/my.slurm.template
+        """
+        ),
     )
 
     parser.add_argument(
-        "--template",
+        "--sif-template",
         type=Path,
-        default=Path("ice_slab.sif.template"),
-        help="Path to the SIF template file (default: ice_slab.sif.template)",
+        default=SIF_TEMPLATE_DEFAULT,
+        help=f"Path to the SIF template file (default: {SIF_TEMPLATE_DEFAULT})",
     )
     parser.add_argument(
         "--slip-template",
         type=Path,
-        default=Path("BCs/slip_linear.sif.template"),
-        help="Path to the basal sliding BC template (default: BCs/slip_linear.sif.template)",
+        default=BC_SLIP_TEMPLATE_DEFAULT,
+        help=f"Path to the basal sliding BC template (default: {BC_SLIP_TEMPLATE_DEFAULT})",
+    )
+
+    parser.add_argument(
+        "--slurm-template",
+        type=Path,
+        default=SLURM_TEMPLATE_DEFAULT,
+        help=f"Path to the Slurm job script template (default: {SLURM_TEMPLATE_DEFAULT})",
     )
 
     parser.add_argument(
         "--cores",
         type=int,
         default=2,
-        help="Number of MPI tasks to request in the generated Slurm job script (default: 2)",
-    )
-
-    parser.add_argument(
-        "--slurm-template",
-        type=Path,
-        default=Path("../../Isambard3/run_isambard3.slurm"),
-        help=(
-            "Path to the Slurm job script template "
-            "(default: ../../Isambard3/run_isambard3.slurm)"
-        ),
+        help="Number of MPI tasks to request in the generated Slurm job script (default: %(default)d)",
     )
 
     parser.add_argument(
@@ -497,40 +536,44 @@ def main() -> None:
         "--width",
         type=float,
         default=3000.0,
-        help="Glacier face width in x [m] (default: 3000)",
+        help="Glacier face width in x [m] (default: %(default)d)",
     )
     geo.add_argument(
         "--length",
         type=float,
         default=4000.0,
-        help="Glacier length in y [m] (default: 4000)",
+        help="Glacier length in y [m] (default: %(default)d)",
     )
     geo.add_argument(
         "--height",
         type=float,
         default=1500.0,
-        help="Initial ice thickness [m] (default: 1500)",
+        help="Initial ice thickness [m] (default: %(default)d)",
     )
     geo.add_argument(
         "--sea-level",
         type=float,
-        default=1255.0,
-        help="Sea level elevation [m] (default: 1255; must be < height)",
+        default=None,
+        help="Sea level elevation [m] (default: computed as (rho_ice / rho_water) x height, placing the ice in approximate hydrostatic equilibrium))",
     )
 
     flow = parser.add_argument_group("Flow")
     flow.add_argument(
         "--inflow",
         type=float,
-        default=1000.0,
-        help="Back-wall inflow velocity in y [m/yr] (default: 1000)",
+        default=1500.0,
+        help="Back-wall inflow velocity in y [m/yr] (default: %(default)d)",
     )
 
     mesh = parser.add_argument_group("Mesh resolution")
-    mesh.add_argument("--nx", type=int, default=10, help="Elements in x (default: 10)")
-    mesh.add_argument("--ny", type=int, default=20, help="Elements in y (default: 20)")
     mesh.add_argument(
-        "--nz", type=int, default=30, help="Extruded z-layers (default: 30)"
+        "--nx", type=int, default=10, help="Elements in x (default: %(default)d)"
+    )
+    mesh.add_argument(
+        "--ny", type=int, default=20, help="Elements in y (default: %(default)d)"
+    )
+    mesh.add_argument(
+        "--nz", type=int, default=30, help="Extruded z-layers (default: %(default)d)"
     )
 
     time = parser.add_argument_group("Time stepping")
@@ -538,13 +581,13 @@ def main() -> None:
         "--run-days",
         type=int,
         default=300,
-        help="Total simulation length in days (default: 300)",
+        help="Total simulation length in days (default: %(default)d)",
     )
     time.add_argument(
         "--output-every",
         type=int,
         default=10,
-        help="Write VTU output every N timesteps (default: 10)",
+        help="Write VTU output every N timesteps (default: %(default)d)",
     )
 
     args = parser.parse_args()
@@ -556,26 +599,41 @@ def main() -> None:
         clean_generated_files()
         return
 
+    rho_ice, rho_water = read_densities(args.sif_template)
+
+    # Place the ice in hydrostatic equilibrium unless overridden.
+    # Sea level is chosen so that the submerged ice thickness equals
+    # (rho_ice / rho_water) × total ice thickness.
+    if args.sea_level is None:
+        args.sea_level = (rho_ice / rho_water) * args.height
+
     if args.sea_level >= args.height:
         parser.error(
             f"--sea-level ({args.sea_level} m) must be less than --height ({args.height} m)"
         )
-    if not args.template.exists():
-        parser.error(f"Template not found: {args.template}")
-
-    if args.cores < 1:
-        parser.error("--cores must be at least 1")
-
+    if not args.sif_template.exists():
+        parser.error(f"Sif template not found: {args.sif_template}")
+    if not args.slip_template.exists():
+        parser.error(f"BC Slip template not found: {args.slip_template}")
     if not args.slurm_template.exists():
         parser.error(f"Slurm template not found: {args.slurm_template}")
 
     subaerial = args.height - args.sea_level
 
+    num_nodes = ceil(args.cores / CORES_PER_NODE)
+    num_tasks_per_node = ceil(args.cores / num_nodes)
+    if num_tasks_per_node * num_nodes != args.cores:
+        parser.error(
+            f"Number of tasks does not evenly divide across nodes of {CORES_PER_NODE} cores each"
+        )
+
     print()
     print("=" * 60)
-    print("  Marine Ice-Cliff Deformation - Generate model files")
+    print("  Marine Ice-Cliff Deformation - Generate ElmerIce model files")
     print("=" * 60)
-    print(f"  Template   : {args.template}")
+    print(f"  SIF Template   : {args.sif_template}")
+    print(f"  BC Slip Template  : {args.slip_template}")
+    print(f"  Slurm Template  : {args.slurm_template}")
     print(
         f"  Geometry   : {args.width:.0f} m wide x {args.length:.0f} m long x {args.height:.0f} m tall"
     )
@@ -585,18 +643,20 @@ def main() -> None:
     print(f"  Inflow     : {args.inflow:.0f} m/yr at back wall")
     print(f"  Mesh       : {args.nx} x {args.ny} x {args.nz} elements")
     print(
-        f"  Simulation : {args.run_days} days, dt = 1/365 yr, output every {args.output_every} day(s)"
+        f"  ElmerIce Simulation : {args.run_days} days, dt = 1/365 yr, output every {args.output_every} day(s)"
     )
     print(f"  MPI tasks  : {args.cores}")
+    print(f"  MPI nodes  : {num_nodes}")
+    print(f"  MPI tasks per node  : {num_tasks_per_node}")
     print()
 
     # Map CLI arguments to the Jinja2-style variable names used in the template.
     # Values are formatted as strings that are valid MATC scalar literals.
-    variables = {
+    sif_variables = {
         "WIDTH": args.width,
         "LENGTH": args.length,
-        "HEIGHT": args.height,
-        "SEA_LEVEL": args.sea_level,
+        "HEIGHT": args.height,  # used to configure the value in the sif file, so needs to remain a float
+        "SEA_LEVEL": args.sea_level,  # also needs to be float for the sif file
         "INFLOW": args.inflow,
         "NX": args.nx,
         "NY": args.ny,
@@ -605,16 +665,17 @@ def main() -> None:
         "OUTPUT_EVERY": args.output_every,
     }
 
+    sif_file = Path(f"ice_slab_h{args.height:.0f}.sif")
     generate_from_template(
-        args.template,
-        Path("ice_slab.sif"),
-        variables,
+        args.sif_template,
+        sif_file,
+        sif_variables,
     )
 
     generate_from_template(
         args.slip_template,
         Path("BCs/slip_linear.sif"),
-        variables,
+        sif_variables,
     )
 
     generate_startinfo()
@@ -622,16 +683,29 @@ def main() -> None:
     generate_grd(args.width, args.length, args.nx, args.ny)
     partition_mesh(args.cores)
 
-    generate_slurm_script(
+    slurm_variables = {
+        "EXP_NAME": "GlacierDeformation",
+        "HEIGHT": int(
+            args.height  # used to format the job name ..._h1500_..., so need to be integer
+        ),
+        "NUM_CORES": args.cores,
+        "NUM_NODES": num_nodes,
+        "NUM_TASKS_PER_NODE": num_tasks_per_node,
+        "SIF_FILE": str(sif_file),
+    }
+    slurm_file = Path(f"run_elmerice_isambard3_h{args.height:.0f}.slurm")
+    generate_from_template(
         args.slurm_template,
-        Path("run_isambard3.slurm"),
-        args.cores,
+        slurm_file,
+        slurm_variables,
     )
+    if not slurm_file.exists():
+        raise RuntimeError(f"Failed to generate Slurm file: {slurm_file}")
 
     print()
     print("Next steps:")
-    print("      sbatch run_isambard3.slurm     # submit to Isambard3")
-    print("  OR  ElmerSolver_mpi ice_slab.sif   # run locally")
+    print(f"      sbatch {slurm_file}     # submit to Isambard3")
+    print(f"  OR  ElmerSolver_mpi {sif_file}   # run locally")
     print()
 
 

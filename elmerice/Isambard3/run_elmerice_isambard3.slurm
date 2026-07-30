@@ -101,8 +101,8 @@ echo "${ELMERSOLVER_MPI}: $(command -v ${ELMERSOLVER_MPI})"
 # -----------------------------------------------------------------------
 cd "${SCRIPT_DIR}"
 
-SIF_TEMPLATE="${SCRIPT_DIR}/ice_slab.sif"
-JOB_SIF_FILE="${SCRIPT_DIR}/ice_slab.${SLURM_JOB_ID}.sif"
+SIF_TEMPLATE="${SCRIPT_DIR}/ice_slab_h{{ HEIGHT }}.sif"
+JOB_SIF_FILE="${SCRIPT_DIR}/ice_slab_h{{ HEIGHT }}.${SLURM_JOB_ID}.sif"
 RESULTS_DIR="Results_h{{ HEIGHT }}_${SLURM_JOB_ID}"
 JOB_OUT_LOG="${SCRIPT_DIR}/${SLURM_JOB_NAME}-${SLURM_JOB_ID}.out.log"
 HEARTBEAT_INTERVAL=30

@@ -1,20 +1,16 @@
-name: base
+name: elmerice
 channels:
   - conda-forge
 dependencies:
   - python=3.12
-  - conda
-  - mamba[version='>=2.4.0']
+  - mamba
   - pip
-  - nano
-  - silx
   - numpy
   - netcdf4
+  - gmsh
   - vtk
   - paraview
-  - viu
-  - pyncview
-  - gmsh
   - ffmpeg
+  - nano
   - tree
-prefix: /home/e5i/fwobus.e5i/miniforge3
+prefix: /home/e5i/fwobus.e5i/miniforge3/envs/elmerice

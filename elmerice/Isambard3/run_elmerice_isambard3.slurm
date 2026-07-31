@@ -53,7 +53,10 @@ if [[ ! -x "${CONDA_BIN}" ]]; then
 fi
 
 eval "$(${CONDA_BIN} shell.bash hook)"
-conda activate base
+conda activate elmerice || {
+	echo "ERROR: Failed to activate conda environment 'elmerice'! Refer to CONDA_ENV.md on how to create the environment." >&2
+	exit 1
+}
 
 # -----------------------------------------------------------------------
 # Locate repository root via LICENSE.md

@@ -14,7 +14,7 @@ A recent Conda installation is required, and **miniforge** is recommended becaus
 - has no commercial licensing restrictions
 
 ```bash
-wget <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname> -m).sh 
+wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh 
 bash Miniforge3-$(uname)-$(uname -m).sh
 ```
 
@@ -28,30 +28,32 @@ conda init bash
 
 This command adds a block of shell code to the very bottom of your hidden ~/.bashrc file, and conda will be available in every new shell.
 
-### Activate mamba solver (for conda-forge or conda installs)
+## Create the `elmerice` conda env
 
-Unless Miniforge is used, the mamba solver should be installed:
+The environment can be created from the supplied `environment.yml` which will recreate the exact versions of everything used during development.
+In case these exact versions are no longer available in the future, the environment could be approximated using the supplied `environment_history.yml` file (but this file contains a `prefix:` entry with a local path used on the original machine; therefore this line is omitted). Alternatively the envirnoment can be created by specifying the required packages.
+
+1) Re-create exact env from yml-file:
+
+Run at the repository root:
 
 ```bash
-conda install -n base -c conda-forge mamba
+conda env create -n elmerice -f elmerice/Isambard3/environment.yml
 ```
 
-## Create the conda env
+2) Re-create env from history yml-file (dropping the `prefix` line):
 
-The environment can be created from the supplied `environment_history.yml` file (but this file contains a `prefix:` entry with a local path used on the original machine; therefore this line is omitted). Alternatively the envirnoment can be created by specifying the required packages.
-
-1) Re-create env from file (dropping the `prefix` line):
+Run at the repository root:
 
 ```bash
-cd elmerice/Isambard3
-mamba env create -n elmerice -f <(grep -v '^prefix:' environment_history.yml)
+conda env create -n elmerice -f <(grep -v '^prefix:' elmerice/Isambard3/environment_history.yml)
 ```
 
-2) Create the env using a package list
+3) Create the env from scratch using a list of required packages:
 
 ```bash
-mamba create -n elmerice -c conda-forge \
-  python=3.12 mamba pip numpy netcdf4 vtk paraview gmsh ffmpeg nano tree
+conda create -n elmerice -c conda-forge \
+  python=3.12 mamba pip numpy netcdf4 gmsh vtk paraview ffmpeg nano tree
 ```
 
 ## Activate the environment
@@ -61,8 +63,6 @@ Run this command once per shell every time a helper script is needed:
 ```bash
 conda activate elmerice
 ```
-
-Alternativeliy this line can be added to the bottom of the `./bashrc` file
 
 ## Verify installation and export
 
@@ -77,5 +77,5 @@ python -c "import pyvista; print(pyvista.__version__)"
 To capture an environment file suitable for sharing or CI, export without build strings:
 
 ```bash
-conda env export --no-builds > environment.yml
+conda env export --no-builds > elmerice/Isambard3/environment.yml
 ```

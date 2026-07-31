@@ -66,12 +66,12 @@ conda activate elmerice
 
 ## Verify installation and export
 
-After activation, confirm the version of Python version and of a key package:
+After activation, confirm the version of Python version and some key packages:
 
 ```bash
 python -V
 python -c "import vtk; print(vtk.__version__)"
-python -c "import pyvista; print(pyvista.__version__)"
+python -c "import paraview; print(paraview.__version__)"
 ```
 
 To capture the environment file without build strings:

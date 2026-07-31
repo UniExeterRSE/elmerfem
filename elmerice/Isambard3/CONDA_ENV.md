@@ -74,7 +74,7 @@ python -c "import vtk; print(vtk.__version__)"
 python -c "import pyvista; print(pyvista.__version__)"
 ```
 
-To capture an environment file suitable for sharing or CI, export without build strings:
+To capture the environment file without build strings:
 
 ```bash
 conda env export --no-builds > elmerice/Isambard3/environment.yml

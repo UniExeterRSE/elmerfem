@@ -312,6 +312,7 @@ def partition_mesh(
         cmd,
         capture_output=True,
         text=True,
+        check=False,
     )
 
     log = result.stdout + result.stderr

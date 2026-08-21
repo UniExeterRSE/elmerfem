@@ -69,7 +69,7 @@ Build logs are written to `build_elmerice-<jobid>.out.log` and `.err.log` in the
 
 ## Cleaning stale CMake artifacts
 
-If a previous cmake run was invoked from inside the source tree (an in-source build), it will scatter `CMakeFiles/` directories throughout the source. The `ADD_ELMER_MODULES` macro in `cmake/Modules/AddModules.cmake` globs subdirectories of the source tree to find solver modules, so any stale `CMakeFiles/` directory it encounters causes:
+If a previous cmake run was accidentally invoked from inside the source tree (an in-source build), it will scatter `CMakeFiles/` directories throughout the source. The `ADD_ELMER_MODULES` macro in `cmake/Modules/AddModules.cmake` globs subdirectories of the source tree to find solver modules, so any stale `CMakeFiles/` directory it encounters causes:
 
 ```
 CMake Error at cmake/Modules/AddModules.cmake:39 (ADD_LIBRARY):

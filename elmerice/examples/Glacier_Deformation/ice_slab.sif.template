@@ -54,7 +54,7 @@ $T_K  = T_ice + 273.15 ! Convert to Kelvin
 ! Regime 2: T >= -10°C  A2 = 6.046e-28 Pa^-3 s^-1,  Q2 = 139 kJ mol^-1
 $A_si = (T_ice < -10.0) ? \
           3.985e-13 * exp(-60.0E03  / (R * T_K)) : \
-          1.916e3 * exp(-139000.0 / (R * T_K))
+          1.916e3 * exp(-139.0E03 / (R * T_K))
 ! Convert from Pa^-3 s^-1  →  MPa^-3 yr^-1
 $A    = A_si * yearinsec * 1.0e18
 

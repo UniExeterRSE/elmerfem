@@ -2,7 +2,7 @@
 
 An idealised 3-D ElmerIce experiment studying viscous deformation of a marine- terminating ice cliff. The setup follows the geometry and loading proposed by Crawford et al. (2021) _Nature Communications_ ([10.1038/s41467-021-23070-7](https://www.nature.com/articles/s41467-021-23070-7)).
 
-Includes longitudinal mesh evolution, ice material properties from Calving3D example
+It includes longitudinal mesh evolution and ice material properties from the Calving3D example.
 
 --------------------------------------------------------------------------------
 
@@ -16,13 +16,13 @@ Includes longitudinal mesh evolution, ice material properties from Calving3D exa
 
 The script `generate_inputs.py` writes all the files required for the model run:
 
-1. Generate `ice_slab.sif` from `ice_slab.sif.template` and `BCs/slip_linear.sif` from `BCs/slip_linear.sif.template`
+1. Generate `ice_slab_h<HEIGHT>.sif` from `ice_slab.sif.template` and `BCs/slip_linear.sif` from `BCs/slip_linear.sif.template`
 2. Create Elmer startup file `ELMERSOLVER_STARTINFO`
 3. Write geometry file `ice_slab_plan.grd`
 4. Run `ElmerGrid` to partition the geometry according to the desired number of cores
-5. Copy and adjust `run_isambard3.slurm` according to the desired number of cores
+5. Copy and adjust `run_elmerice_isambard3_h<HEIGHT>.slurm` according to the desired number of cores
 
-After running this script, the model directory is ready for the slurm job to be submitted with `sbatch run_isambard3.slurm`.
+After running this script, the model directory is ready for the Slurm job to be submitted with e.g. `sbatch run_elmerice_isambard3_h1500.slurm` (using the default `height = 1500` m).
 
 --------------------------------------------------------------------------------
 
@@ -35,13 +35,13 @@ After running this script, the model directory is ready for the slurm job to be 
 # 2a. Run on Isambard3
 sbatch run_elmerice_isambard3_h1500.slurm
 
-# 2b. Run locally
+# 2b. Run locally (run from this example directory)
 mpirun -np 4 ElmerSolver_mpi ice_slab_h1500.sif
 ```
 
 ### Custom parameters
 
-It is easy to modify the gemoetry or the sea level and many other parameters. List all available command line options using:
+It is easy to modify the geometry, the sea level, or many other parameters. List all available command line options using:
 
 ```bash
 ./generate_inputs.py --help
@@ -52,7 +52,7 @@ It is easy to modify the gemoetry or the sea level and many other parameters. Li
 
 ## Prerequisites
 
-Instruction on setting on the environment and compiling the model executable are given in the Isambard3 documentation; see [Isambard3/README.md](../../Isambard3/README.md) for details.
+Instructions for setting up the environment and compiling the model executable are given in the Isambard3 documentation; see [Isambard3/README.md](../../Isambard3/README.md) for details.
 
 --------------------------------------------------------------------------------
 
@@ -67,7 +67,8 @@ Instruction on setting on the environment and compiling the model executable are
 | Subaerial cliff     | calculated   | m     | `height - sea_level`                                                         |
 | `nx × ny × nz`      | 10 × 20 × 30 | —     | Mesh resolution (plan × extruded levels)                                     |
 | `run_days`          | 300          | days  | Simulation length (SIF default)                                              |
-| `output_every_days` | 10           | days  | VTU output frequency (SIF default)                                           |
+| `output_every_days` | 10           | days  | VTU output every N timesteps (N = 10; ≈ every 10 days with the 1-day step)   |
+| `inflow`            | 1500         | m/yr  | Back-wall inflow velocity (Vy)                                               |
 | Timestep            | 1/365        | yr    | ≈ 1 day, BDF1 (first-order backward differentiation)                         |
 
 --------------------------------------------------------------------------------
@@ -127,7 +128,7 @@ Units: MPa – year – metre (Elmer/Ice standard).
 
 | BC  | Location   | Condition                                                                                                                                                                                                                                                                                                                                                                                        |
 | --- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | y = 0      | Back wall -- prescribed inflow: `Velocity 2 (Vy) = U_inflow` (default 1000); `Velocity 1 (Vx) = 0`. Longitudinal mesh update fields are held fixed here.                                                                                                                                                                                                                                         |
+| 1   | y = 0      | Back wall -- prescribed inflow: `Velocity 2 (Vy) = U_inflow` (default 1500 m/yr); `Velocity 1 (Vx) = 0`. Longitudinal mesh update fields are held fixed here.                                                                                                                                                                                                                                    |
 | 2   | x = width  | Right wall -- no normal flow (`Vx = 0`). Mesh is pinned only in the x-direction (allowing y/z to follow front advance at corners).                                                                                                                                                                                                                                                               |
 | 3   | y = length | Calving front -- hydrostatic ocean pressure applied below sea level; `Flow Force BC` and `Calving Front` enabled. A longitudinal mesh update applies an incremental y-displacement taken from the flow solution (`vy_dt`); because the MeshSolver subtracts the previous step's field each timestep, this incremental `vy_dt` BC cancels after the first timestep (see `ice_slab.sif` comments). |
 | 4   | x = 0      | Left wall -- no normal flow (`Vx = 0`), mesh pinned only in x (matches right wall behavior).                                                                                                                                                                                                                                                                                                     |
@@ -157,7 +158,7 @@ Note: `tx(i)` returns the i-th coordinate (zero-based) in MATC expressions; cons
 
 ### Output Files
 
-Results are written to `./Results.<JOBID>/`. Upon successful completion of the simulation, the dircetory will contain:
+Results are written to `./Results_h<HEIGHT>_<JOBID>/` (for example, `./Results_h2500_5618387/`). Upon successful completion of the simulation, the directory will contain:
 
 | File                       | Contents                                                |
 | -------------------------- | ------------------------------------------------------- |
@@ -176,7 +177,7 @@ Results are written to `./Results.<JOBID>/`. Upon successful completion of the s
 The manifests in the `.pvtu` files only reference the per-CPU `.vtu` files containing the binary fields, and these binary files can be inspected with a helper script:
 
 ```bash
-../../Isambard3/list_vtu.py Results_2574558/ice_cliff_2np1_t0001.vtu 
+../../Isambard3/list_vtu.py Results_h2500_5618387/ice_cliff_2np1_t0001.vtu 
 ```
 
 Each VTU file contains the following:
@@ -198,7 +199,7 @@ Each VTU file contains the following:
 e.g.:
 
 ```bash
-paraview Results_2574558/cliff_*.pvtu
+paraview Results_h2500_5618387/ice_cliff_*.pvtu
 ```
 
 ### Headless rendering from a saved ParaView state
@@ -208,11 +209,11 @@ For batch rendering on HPC, we use the `render_paraview_animation.py` helper scr
 The most basic command:
 
 ```bash
-../../Isambard3/render_paraview_animation.py Results_2574558/ state_velocity.pvsm
+../../Isambard3/render_paraview_animation.py Results_h2500_5618387/ state_velocity.pvsm
 ```
 will write:
-- `Results_2574558/animation.mp4` (the animation of the model sequence)
-- `Results_2574558/frame.0000.png`-`frame.0300.png` (individual frames)
+- `Results_h2500_5618387/animation.mp4` (the animation of the model sequence)
+- `Results_h2500_5618387/frame.0000.png`-`frame.0300.png` (individual frames)
 
 
 Three state files are supplied here:
@@ -227,13 +228,13 @@ The `render_paraview_animation.py` script supports a rich set of command line op
  - Change the output filenames, as to avoid renderings using different state files from overwriting previous output:
 
 ```bash
-../../Isambard3/render_paraview_animation.py Results_2574558/ state_velocity.pvsm --anim-output animation_velocity.mp4 --frame-output frames_velocity
+../../Isambard3/render_paraview_animation.py Results_h2500_5618387/ state_velocity.pvsm --anim-output animation_velocity.mp4 --frame-output frames_velocity
 ```
 
- - Supress the writing of the `frames.XXXX.png` files, keeping only the animation:
+ - Suppress the writing of the `frames.XXXX.png` files, keeping only the animation:
   
 ```bash
-../../Isambard3/render_paraview_animation.py Results_2574558/ state_velocity.pvsm --render animation --anim-output animation_velocity.mp4
+../../Isambard3/render_paraview_animation.py Results_h2500_5618387/ state_velocity.pvsm --render animation --anim-output animation_velocity.mp4
 ```
 
 --------------------------------------------------------------------------------

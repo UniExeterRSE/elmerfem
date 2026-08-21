@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=elmerice_{{ EXP_NAME }}_h{{ HEIGHT }}
+#SBATCH --job-name=elmerice_{{ EXP_NAME }}_h{{ HEIGHT }}_t{{ ICE_TEMP }}
 #SBATCH --output=%x-%j.out.log
 #SBATCH --error=%x-%j.err.log
 #SBATCH --partition=grace
@@ -104,9 +104,9 @@ echo "${ELMERSOLVER_MPI}: $(command -v ${ELMERSOLVER_MPI})"
 # -----------------------------------------------------------------------
 cd "${SCRIPT_DIR}"
 
-SIF_TEMPLATE="${SCRIPT_DIR}/ice_slab_h{{ HEIGHT }}.sif"
-JOB_SIF_FILE="${SCRIPT_DIR}/ice_slab_h{{ HEIGHT }}.${SLURM_JOB_ID}.sif"
-RESULTS_DIR="Results_h{{ HEIGHT }}_${SLURM_JOB_ID}"
+SIF_TEMPLATE="${SCRIPT_DIR}/ice_slab_h{{ HEIGHT }}_t{{ ICE_TEMP }}.sif"
+JOB_SIF_FILE="${SCRIPT_DIR}/ice_slab_h{{ HEIGHT }}_t{{ ICE_TEMP }}.${SLURM_JOB_ID}.sif"
+RESULTS_DIR="Results_h{{ HEIGHT }}_t{{ ICE_TEMP }}_${SLURM_JOB_ID}"
 JOB_OUT_LOG="${SCRIPT_DIR}/${SLURM_JOB_NAME}-${SLURM_JOB_ID}.out.log"
 HEARTBEAT_INTERVAL=30
 

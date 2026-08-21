@@ -15,11 +15,11 @@ are also supported, for example::
 
 Generated files
 ---------------
-  ice_slab_plan.grd       - ElmerGrid 2D plan-view mesh
-  ice_slab.sif            - Elmer solver input file
-  BCs/slip_linear.sif     - rendered basal sliding boundary condition
-  run_isambard3.slurm     - Slurm submission script with requested MPI task count
-  ELMERSOLVER_STARTINFO   - tells ElmerSolver which .sif to use
+  ice_slab_plan.grd                      - ElmerGrid 2D plan-view mesh
+  ice_slab_h<H>_t<T>.sif                 - Elmer solver input file
+  BCs/slip_linear.sif                    - rendered basal sliding boundary condition
+  run_elmerice_isambard3_h<H>_t<T>.slurm - Slurm submission script with requested MPI task count
+  ELMERSOLVER_STARTINFO                  - tells ElmerSolver which .sif to use
 
 Usage
 -----
@@ -246,31 +246,6 @@ def generate_startinfo(sif_filename: str = "ice_slab.sif") -> None:
     print(f"  Written: ELMERSOLVER_STARTINFO  → {sif_filename}")
 
 
-def generate_slurm_script(
-    template_path: Path,
-    output_path: Path,
-    cores: int,
-) -> None:
-    """Generate a Slurm job script with the requested MPI core count."""
-
-    lines = template_path.read_text(encoding="utf-8").splitlines()
-    replacements = []
-
-    for i, line in enumerate(lines):
-        if line.startswith("#SBATCH --ntasks="):
-            lines[i] = f"#SBATCH --ntasks={cores}"
-            replacements.append(f"--ntasks={cores}")
-        elif line.startswith("#SBATCH --ntasks-per-node="):
-            lines[i] = f"#SBATCH --ntasks-per-node={cores}"
-            replacements.append(f"--ntasks-per-node={cores}")
-
-    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-    print(
-        f"  Written: {output_path}  ({cores} MPI task{'s' if cores != 1 else ''}: {', '.join(replacements)})"
-    )
-
-
 # ---------------------------------------------------------------------------
 # Call external tools
 # ---------------------------------------------------------------------------
@@ -385,15 +360,15 @@ def clean_generated_files() -> None:
     files = [
         Path("core"),
         Path("ice_slab_plan.grd"),
-        Path("ice_slab.sif"),
         Path("BCs/slip_linear.sif"),
         Path("ELMERSOLVER_STARTINFO"),
         Path("ice_cliff_relaxation.result"),
         Path("ElmerGrid.log"),
-        Path("run_isambard3.slurm"),
     ]
 
     file_patterns = [
+        "ice_slab_h*_t*.sif",
+        "run_elmerice_isambard3_h*_t*.slurm",
         "*.vtu",
         "*.pvtu",
         "*.out.log",
@@ -477,13 +452,16 @@ def main() -> None:
             Default (3000 m x 4000 m x 1500 m, 10x20 grid, 30 levels, sea level at 1255 m, inflow 1500 m/yr):
               python generate_inputs.py
 
-            Deeper submergence:
+            Deeper submergence (in m):
               python generate_inputs.py --sea-level 1350
 
-            Higher resolution:
+            Modified ice temperature (in °C):
+              python generate_inputs.py --ice-temperature -10
+
+            Higher resolution (in grid cell count):
               python generate_inputs.py --nx 20 --ny 40 --nz 40
 
-            Longer run:
+            Longer run (in days):
               python generate_inputs.py --run-days 300 --output-every 10
 
             Custom sif template location (other than {SIF_TEMPLATE_DEFAULT}):
@@ -555,6 +533,14 @@ def main() -> None:
         type=float,
         default=None,
         help="Sea level elevation [m] (default: computed as (rho_ice / rho_water) x height, placing the ice in approximate hydrostatic equilibrium))",
+    )
+
+    flow = parser.add_argument_group("Physics")
+    flow.add_argument(
+        "--ice-temperature",
+        type=float,
+        default=-20.0,
+        help="Ice temperature [°C] (default: %(default)d)",
     )
 
     flow = parser.add_argument_group("Flow")
@@ -641,6 +627,7 @@ def main() -> None:
         f"  Sea level  : {args.sea_level:.0f} m  (subaerial cliff = {subaerial:.0f} m)"
     )
     print(f"  Inflow     : {args.inflow:.0f} m/yr at back wall")
+    print(f"  Ice Temp.  : {args.ice_temperature:.0f} °C")
     print(f"  Mesh       : {args.nx} x {args.ny} x {args.nz} elements")
     print(
         f"  ElmerIce Simulation : {args.run_days} days, dt = 1/365 yr, output every {args.output_every} day(s)"
@@ -658,6 +645,7 @@ def main() -> None:
         "HEIGHT": args.height,  # used to configure the value in the sif file, so needs to remain a float
         "SEA_LEVEL": args.sea_level,  # also needs to be float for the sif file
         "INFLOW": args.inflow,
+        "ICE_TEMP": args.ice_temperature,
         "NX": args.nx,
         "NY": args.ny,
         "NZ": args.nz,
@@ -665,7 +653,7 @@ def main() -> None:
         "OUTPUT_EVERY": args.output_every,
     }
 
-    sif_file = Path(f"ice_slab_h{args.height:.0f}.sif")
+    sif_file = Path(f"ice_slab_h{args.height:.0f}_t{args.ice_temperature:.0f}.sif")
     generate_from_template(
         args.sif_template,
         sif_file,
@@ -678,7 +666,7 @@ def main() -> None:
         sif_variables,
     )
 
-    generate_startinfo()
+    generate_startinfo(sif_file.name)
 
     generate_grd(args.width, args.length, args.nx, args.ny)
     partition_mesh(args.cores)
@@ -688,12 +676,17 @@ def main() -> None:
         "HEIGHT": int(
             args.height  # used to format the job name ..._h1500_..., so need to be integer
         ),
+        "ICE_TEMP": int(
+            args.ice_temperature  # used to format the job name ..._t-20_..., so need to be integer
+        ),
         "NUM_CORES": args.cores,
         "NUM_NODES": num_nodes,
         "NUM_TASKS_PER_NODE": num_tasks_per_node,
         "SIF_FILE": str(sif_file),
     }
-    slurm_file = Path(f"run_elmerice_isambard3_h{args.height:.0f}.slurm")
+    slurm_file = Path(
+        f"run_elmerice_isambard3_h{args.height:.0f}_t{args.ice_temperature:.0f}.slurm"
+    )
     generate_from_template(
         args.slurm_template,
         slurm_file,
@@ -705,7 +698,7 @@ def main() -> None:
     print()
     print("Next steps:")
     print(f"      sbatch {slurm_file}     # submit to Isambard3")
-    print(f"  OR  ElmerSolver_mpi {sif_file}   # run locally")
+    print(f" -OR- ElmerSolver_mpi {sif_file}            # run locally")
     print()
 
 

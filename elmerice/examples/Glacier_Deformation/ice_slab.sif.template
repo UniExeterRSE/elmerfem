@@ -9,7 +9,7 @@
 !!     height = {{ HEIGHT }} m                                        !!
 !!                                                                    !!
 !!   Physics:                                                         !!
-!!     Full Stokes, Glen flow law (n = 3), temperate ice (0°C)        !!
+!!     Full Stokes, Glen flow law (n = 3), configurable ice temp.     !!
 !!     Sliding bed, inflow at back, kinematic calving-front advance.  !!
 !!     Sea level at z = {{ SEA_LEVEL }} m leaves a                   !!
 !!     {{ HEIGHT - SEA_LEVEL }} m subaerial cliff front.              !!
@@ -31,6 +31,9 @@ $nz          = {{ NZ }}         ! z-layers (Discretization for non-linear shear 
 !---------------------------------------------------------
 $yearinsec = 365.25 * 24.0 * 60.0 * 60.0
 
+! Ice temperature (degrees Celsius) - configurable
+$T_ice = {{ ICE_TEMP }}
+
 ! Ice density
 $rhoi = 910.0 / (1.0e6 * yearinsec^2)
 
@@ -43,9 +46,17 @@ $gravity = -9.81 * yearinsec^2
 ! Glen exponent
 $n = 3.0
 
-! Ice softness for temperate ice (0°C) from Crawford et al.
-! A_SI = 2.4e-24  Pa^-3 s^-1
-$A   = 2.4e-24 * yearinsec * 1.0e18
+! Arrhenius / Paterson (1994) two-regime flow law
+! Rate factors (Pa^-3 s^-1) and activation energies (J mol^-1)
+$R    = 8.314          ! Universal gas constant  [J mol^-1 K^-1]
+$T_K  = T_ice + 273.15 ! Convert to Kelvin
+! Regime 1: T < -10°C   A1 = 1.258e-13 Pa^-3 s^-1,  Q1 = 60  kJ mol^-1
+! Regime 2: T >= -10°C  A2 = 6.046e-28 Pa^-3 s^-1,  Q2 = 139 kJ mol^-1
+$A_si = (T_ice < -10.0) ? \
+          1.258e-13 * exp(-60.0e3  / (R * T_K)) : \
+          6.046e-28 * exp(-139.0e3 / (R * T_K))
+! Convert from Pa^-3 s^-1  →  MPa^-3 yr^-1
+$A    = A_si * yearinsec * 1.0e18
 
 ! Glen viscosity prefactor  η = (2A)^(-1/n)  [MPa yr^(1/n)]
 $eta = (2.0 * A)^(-1.0 / n)
@@ -173,7 +184,7 @@ Material 1
 ! two regimes in the flow law
   Limit Temperature = Real -10.0
 ! In case there is no temperature variable
-  Constant Temperature = Real -20.0
+  Constant Temperature = Real {{ ICE_TEMP }}
   Critical Shear Rate = Real 1.0E-10
 
   Sea level = Real $sea_level

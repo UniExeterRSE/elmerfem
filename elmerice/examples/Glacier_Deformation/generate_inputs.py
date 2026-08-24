@@ -73,7 +73,9 @@ CORES_PER_NODE = 144  # Isambard3 has 144 cores per node
 
 SIF_TEMPLATE_DEFAULT: Path = Path("ice_slab.sif.template")
 BC_SLIP_TEMPLATE_DEFAULT = Path("BCs/slip_linear.sif.template")
-SLURM_TEMPLATE_DEFAULT: Path = Path("../../Isambard3/run_elmerice_isambard3.slurm")
+SLURM_TEMPLATE_DEFAULT: Path = Path(
+    "../../Isambard3/run_elmerice_isambard3.template.slurm"
+)
 
 # ---------------------------------------------------------------------------
 # Template rendering

@@ -463,7 +463,7 @@ def main() -> None:
               python generate_inputs.py --nx 20 --ny 40 --nz 40
 
             Longer run (in days):
-              python generate_inputs.py --run-days 100
+              python generate_inputs.py --run-days 300
 
             Custom sif template location (other than {SIF_TEMPLATE_DEFAULT}):
               python generate_inputs.py ... --sif-template path/to/my.sif.template
@@ -567,7 +567,7 @@ def main() -> None:
     time.add_argument(
         "--run-days",
         type=int,
-        default=50,  # length of deformation runs by Crawford et al. 2021
+        default=100,  # length of deformation runs by Crawford et al. 2021
         help="Total simulation length in days (default: %(default)d)",
     )
     time.add_argument(

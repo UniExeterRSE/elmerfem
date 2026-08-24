@@ -3,20 +3,16 @@
         "myDefaultIncludePath": [
             "${workspaceFolder}"
         ],
-        "myCompilerPath": "/usr/local/bin/gcc-9"
+        "myCompilerPath": "/opt/cray/pe/gcc-native/14/bin/gcc"
     },
     "configurations": [
         {
-            "name": "Mac GNU GCC HomeBrew",
+            "name": "Linux GCC native",
             "intelliSenseMode": "gcc-x64",
             "includePath": [
-                "${myDefaultIncludePath}",
-                "/usr/local/Cellar/qt@4/4.8.7_6/lib/QtGui.framework/Versions/4/Headers"
+                "${myDefaultIncludePath}"
             ],
-            "macFrameworkPath": [
-                "/System/Library/Frameworks"
-            ],
-            "compilerPath": "/usr/local/bin/gcc-9",
+            "compilerPath": "${myCompilerPath}",
             "cStandard": "c11",
             "cppStandard": "c++17",
             "browse": {

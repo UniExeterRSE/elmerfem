@@ -59,7 +59,7 @@ conda activate elmerice || {
 }
 
 # -----------------------------------------------------------------------
-# Locate repository root via LICENSE.md
+# Locate repository root by finding LICENSE.md
 # -----------------------------------------------------------------------
 SCRIPT_PATH=$(scontrol show job "${SLURM_JOB_ID}" |
 	awk -F= '/Command/{print $2}' | awk '{print $1}')
@@ -106,7 +106,8 @@ cd "${SCRIPT_DIR}"
 
 SIF_TEMPLATE="${SCRIPT_DIR}/ice_slab_h{{ HEIGHT }}_t{{ ICE_TEMP }}.sif"
 JOB_SIF_FILE="${SCRIPT_DIR}/ice_slab_h{{ HEIGHT }}_t{{ ICE_TEMP }}.${SLURM_JOB_ID}.sif"
-RESULTS_DIR="Results_h{{ HEIGHT }}_t{{ ICE_TEMP }}_${SLURM_JOB_ID}"
+RESULTS_DIR="/projects/e5i/elmerice/Results_h{{ HEIGHT }}_t{{ ICE_TEMP }}_${SLURM_JOB_ID}"
+RESULTS_DIR_NAME="$(basename "${RESULTS_DIR}")"
 JOB_OUT_LOG="${SCRIPT_DIR}/${SLURM_JOB_NAME}-${SLURM_JOB_ID}.out.log"
 HEARTBEAT_INTERVAL=30
 
@@ -120,8 +121,14 @@ cleanup_job_files() {
 }
 trap cleanup_job_files EXIT
 
+echo ""
+echo "Output results path: ${RESULTS_DIR}"
+# Create output directories if they don't exist
 echo "mkdir -p ${RESULTS_DIR}"
 mkdir -p "${RESULTS_DIR}"
+echo "ln -s ${RESULTS_DIR} ${RESULTS_DIR_NAME}"
+ln -s "${RESULTS_DIR}" "${RESULTS_DIR_NAME}"
+echo "------------------------------------------------------------------------"
 
 cp "${SIF_TEMPLATE}" "${JOB_SIF_FILE}"
 
@@ -205,11 +212,21 @@ echo "========================================================================"
 if [ ${RETCODE} -eq 0 ]; then
 	echo ""
 	echo "Simulation completed successfully!"
-	echo "Results saved in: ./${RESULTS_DIR}/"
+	echo "Results saved in: ${RESULTS_DIR}/"
 	echo ""
-	if [ -d "./${RESULTS_DIR}" ]; then
+	if [ -d "${RESULTS_DIR}" ]; then
 		echo "Last 10 output files:"
-		ls -lh "./${RESULTS_DIR}/" | tail -10
+		ls -lh "${RESULTS_DIR}/" | tail -10
+	fi
+
+	cd "${SCRIPT_DIR}"
+	echo "../../Isambard3/render_paraview_animation.py ${RESULTS_DIR} state_pressure.pvsm"
+	../../Isambard3/render_paraview_animation.py "${RESULTS_DIR}" state_pressure.pvsm
+	if [ -d "${RESULTS_DIR}/animation.mp4" ]; then
+		echo "Animation created successfully: ${RESULTS_DIR}/animation.mp4"
+		ls -lh "${RESULTS_DIR}/animation.mp4"
+	else
+		echo "ERROR: Creation of 3D animation failed. Check logs for details."
 	fi
 fi
 

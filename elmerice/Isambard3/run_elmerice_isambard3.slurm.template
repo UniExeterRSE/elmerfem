@@ -133,18 +133,18 @@ echo "------------------------------------------------------------------------"
 cp "${SIF_TEMPLATE}" "${JOB_SIF_FILE}"
 
 # Update the original SIF configuration file in-place with the dynamic output path
-if ! sed -i -E "s|^[[:space:]]*Results Directory[[:space:]]+\"\./Results[^\"]*\"|  Results Directory \"./${RESULTS_DIR}/\"|" "${JOB_SIF_FILE}"; then
+if ! sed -i -E "s|^[[:space:]]*Results Directory[[:space:]]+\"Results[^\"]*\"|  Results Directory \"${RESULTS_DIR}/\"|" "${JOB_SIF_FILE}"; then
 	echo "ERROR: Failed to patch Results Directory in ${JOB_SIF_FILE}" >&2
 	exit 1
 fi
 
-if ! grep -q "Results Directory \"./${RESULTS_DIR}/\"" "${JOB_SIF_FILE}"; then
+if ! grep -q "Results Directory \"${RESULTS_DIR}/\"" "${JOB_SIF_FILE}"; then
 	echo "ERROR: Results Directory patch did not take effect in ${JOB_SIF_FILE}" >&2
 	exit 1
 fi
 
 echo "Generated ${JOB_SIF_FILE} from template ${SIF_TEMPLATE}"
-echo "Patched ${JOB_SIF_FILE} to write results into ./${RESULTS_DIR}/"
+echo "Patched ${JOB_SIF_FILE} to write results into ${RESULTS_DIR}/"
 
 echo ""
 echo "Results Directory: ${RESULTS_DIR}"

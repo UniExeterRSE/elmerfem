@@ -76,7 +76,7 @@ $output_every_days = {{ OUTPUT_EVERY }}
 !==========================================================
 Header
   Mesh DB "." "ice_slab_plan"
-  Results Directory "./Results"
+  Results Directory "Results"
 End
 
 Constants
@@ -292,12 +292,26 @@ Solver 5
   Vector Field 2 = String "Mesh Velocity"
 End
 
+Solver 6
+  Exec Solver = "Before Simulation"
+  Equation    = "Initial Output"
+  Procedure   = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = "ice_cliff"
+  Output Format    = "vtu"
+  Vtu Format       = Logical True
+
+  Scalar Field 1 = String "Pressure"
+  Scalar Field 2 = String "Zs"
+  Vector Field 1 = String "Velocity"
+  Vector Field 2 = String "Mesh Velocity"
+End
+
 !==========================================================
 ! EQUATIONS
 !==========================================================
 Equation 1
   Name = "Ice Flow"
-  Active Solvers(4) = 1 2 4 5
+  Active Solvers(4) = 1 2 4 5 6
   ALE Formulation = Logical True
   Convection         = Computed
   Flow Solution Name = String "Flow Solution"

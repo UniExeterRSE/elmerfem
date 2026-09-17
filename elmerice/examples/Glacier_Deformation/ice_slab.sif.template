@@ -204,7 +204,7 @@ End
 !==========================================================
 Solver 1
   Equation = "MapCoordinate"
-  Exec Solver = "Before Timestep"
+  Exec Solver = String "Before Simulation and Timestep"
   Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
   Active Coordinate          = Integer 3
   Mesh Velocity First Zero   = Logical True

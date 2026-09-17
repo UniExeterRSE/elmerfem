@@ -202,16 +202,30 @@ End
 !==========================================================
 ! SOLVERS
 !==========================================================
+! Initial mesh mapping: must run before the Before-Simulation
+! result output so that the full 3-D ice block is written at
+! output timestep 0.
 Solver 1
   Equation = "MapCoordinate"
-  Exec Solver = String "Before Simulation and Timestep"
+  Exec Solver = String "Before Simulation"
   Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
   Active Coordinate          = Integer 3
   Mesh Velocity First Zero   = Logical True
   Recompute Stabilization    = Logical True
 End
 
+! Per-timestep mesh mapping: updates the geometry before each
+! transient step, including the first one.
 Solver 2
+  Equation = "MapCoordinate"
+  Exec Solver = String "Before Timestep"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate          = Integer 3
+  Mesh Velocity First Zero   = Logical True
+  Recompute Stabilization    = Logical True
+End
+
+Solver 3
   Equation = "Navier-Stokes"
   Stabilization Method = String "Stabilized"
   Flow Model           = String "Stokes"
@@ -227,7 +241,7 @@ Solver 2
   Steady State Convergence Tolerance = 1.0e-4
 End
 
-Solver 3
+Solver 4
   Equation = "Free Surface Top"
   Variable     = "Zs"
   Variable DOFs = 1
@@ -259,7 +273,7 @@ Solver 3
 End
 
 ! Longitudinal mesh motion driven by Stokes velocity (no calving).
-Solver 4
+Solver 5
   Equation = "Longitudinal Mesh Update"
   Procedure = "MeshSolve" "MeshSolver"
   Exec Solver = "After Timestep"
@@ -278,7 +292,7 @@ Solver 4
   First Time Non-Zero = Logical True
 End
 
-Solver 5
+Solver 6
   Exec Solver = "After Timestep"
   Equation    = "Result Output"
   Procedure   = "ResultOutputSolve" "ResultOutputSolver"
@@ -292,7 +306,7 @@ Solver 5
   Vector Field 2 = String "Mesh Velocity"
 End
 
-Solver 6
+Solver 7
   Exec Solver = "Before Simulation"
   Equation    = "Initial Output"
   Procedure   = "ResultOutputSolve" "ResultOutputSolver"
@@ -311,7 +325,7 @@ End
 !==========================================================
 Equation 1
   Name = "Ice Flow"
-  Active Solvers(4) = 1 2 4 5 6
+  Active Solvers(6) = 1 2 3 5 6 7
   ALE Formulation = Logical True
   Convection         = Computed
   Flow Solution Name = String "Flow Solution"
@@ -319,7 +333,7 @@ End
 
 Equation 2
   Name = "Top Surface Evolution"
-  Active Solvers(1) = 3
+  Active Solvers(1) = 4
   Convection         = Computed
   Flow Solution Name = String "Flow Solution"
 End

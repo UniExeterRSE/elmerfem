@@ -594,8 +594,8 @@ def main() -> None:
     # Sea level is chosen so that the submerged ice thickness equals
     # (rho_ice / rho_water) × total ice thickness.
     if args.sea_level is None:
-        # apply 1% error margin to prevent sealevel being at exact equilibrium (which can cause ice to float)
-        args.sea_level = ((rho_ice * 0.99) / rho_water) * args.height
+        # apply some error margin to prevent sealevel being at exact equilibrium (which can cause ice to float)
+        args.sea_level = ((rho_ice * 0.94) / rho_water) * args.height
 
     if args.sea_level >= args.height:
         parser.error(

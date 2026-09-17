@@ -575,7 +575,7 @@ def main() -> None:
     time.add_argument(
         "--output-every",
         type=int,
-        default=10,
+        default=1,
         help="Write VTU output every N timesteps (default: %(default)d)",
     )
 

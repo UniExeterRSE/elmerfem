@@ -90,6 +90,10 @@ ELMERSOLVER_MPI="${INSTALL_DIR}/bin/ElmerSolver_mpi"
 
 # Activate Spack environment (provides MUMPS, HDF5, etc.)
 ISAMBARD3_DIR="${REPO_ROOT}/elmerice/Isambard3"
+if [[ ! -d "${ISAMBARD3_DIR}" ]]; then
+	echo "ERROR: Isambard3 directory not found at ${ISAMBARD3_DIR}" >&2
+	exit 1
+fi
 if [[ -f "${HOME}/spack/share/spack/setup-env.sh" ]]; then
 	# shellcheck disable=SC1090
 	source "${HOME}/spack/share/spack/setup-env.sh"
@@ -135,8 +139,14 @@ echo ""
 echo "========================================================================"
 echo "Step 2: Converting and partitioning mesh (${SLURM_NTASKS} tasks)..."
 echo "========================================================================"
-echo "	ElmerGrid 14 2 PlanMesh.msh -autoclean -metis ${SLURM_NTASKS} 0"
-ElmerGrid 14 2 PlanMesh.msh -autoclean -metis "${SLURM_NTASKS}" 0
+# Step 1: Convert Gmsh to Elmer format (creates mesh.header etc.)
+echo "   ElmerGrid 14 2 PlanMesh.msh -autoclean"
+ElmerGrid 14 2 PlanMesh.msh -autoclean
+
+# Step 2: Partition if needed later for parallel runs
+echo "   ElmerGrid 2 2 PlanMesh -metis ${SLURM_NTASKS} 0"
+ElmerGrid 2 2 PlanMesh -metis "${SLURM_NTASKS}" 0
+
 echo "Done: PlanMesh/ mesh directory created"
 echo ""
 

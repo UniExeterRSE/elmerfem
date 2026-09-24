@@ -117,8 +117,6 @@ SIF_TEMPLATE="${SCRIPT_DIR}/calving3d.sif"
 JOB_SIF_FILE="${SCRIPT_DIR}/calving3d.${SLURM_JOB_ID}.sif"
 RESULTS_DIR="/projects/e5i/elmerice/Results_${SLURM_JOB_ID}"
 RESULTS_DIR_NAME="$(basename "${RESULTS_DIR}")"
-JOB_OUT_LOG="${SCRIPT_DIR}/${SLURM_JOB_NAME}-${SLURM_JOB_ID}.out.log"
-HEARTBEAT_INTERVAL=30
 
 # -----------------------------------------------------------------------
 # Step 1: Generate surface mesh with gmsh
@@ -247,54 +245,18 @@ RUN_CMD=(srun --mpi=cray_shasta "${ELMERSOLVER_MPI}" "${JOB_SIF_FILE}")
 echo "========================================================================"
 echo "Running: ${RUN_CMD[*]} with calving3d configuration..."
 echo "Start:   $(date)"
-echo "========================================================================"
-
-monitor_solver_progress() {
-	local solver_pid="$1"
-	local last_size=-1
-
-	while kill -0 "${solver_pid}" 2>/dev/null; do
-		local size=0
-		local growth="unknown"
-
-		if [[ -f "${JOB_OUT_LOG}" ]]; then
-			size=$(stat -c %s "${JOB_OUT_LOG}" 2>/dev/null || echo 0)
-
-			if [[ ${last_size} -ge 0 ]]; then
-				if [[ ${size} -gt ${last_size} ]]; then
-					growth="growing"
-				else
-					growth="unchanged"
-				fi
-			fi
-			last_size=${size}
-		fi
-
-		echo "Heartbeat $(date '+%Y-%m-%d %H:%M:%S'): log=${size}B (${growth})"
-		sleep "${HEARTBEAT_INTERVAL}"
-	done
-}
 
 START=$(date +%s.%N)
 set +e
 "${RUN_CMD[@]}" &
-SOLVER_PID=$!
-monitor_solver_progress "${SOLVER_PID}" &
-MONITOR_PID=$!
-
-wait "${SOLVER_PID}"
 RETCODE=$?
-
-kill "${MONITOR_PID}" 2>/dev/null || true
-wait "${MONITOR_PID}" 2>/dev/null || true
 set -e
-
 END=$(date +%s.%N)
 
 ELAPSED=$(awk "BEGIN {printf \"%.1f\", ${END} - ${START}}")
+echo "End:     $(date)  -  elapsed ${ELAPSED} s  -  exit code ${RETCODE}"
 echo "========================================================================"
-echo "Finished at $(date)  -  elapsed ${ELAPSED} s  -  exit code ${RETCODE}"
-echo "========================================================================"
+
 # Print some result statistics if successful
 if [ ${RETCODE} -eq 0 ]; then
 	echo ""

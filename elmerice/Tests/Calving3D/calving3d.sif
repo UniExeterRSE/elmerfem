@@ -24,7 +24,7 @@ $SL = 0.0
 Header
   Mesh DB "." "PlanMesh"
   Include Path "include"
-  Results Directory "./Results/"
+  Results Directory "Results"
 End
 
 Constants

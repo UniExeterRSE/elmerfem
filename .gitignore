@@ -559,3 +559,8 @@ MigrationBackup/
 
 install/
 build/
+elmerice/Tests/Calving3D/calving3d.*.sif
+elmerice/Tests/Calving3D/Results_*
+elmerice/Tests/Calving3D/PlanMesh/
+
+
